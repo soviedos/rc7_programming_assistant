@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.db.models import Manual, ManualChunk, ManualChunkReview
+from src.db.models import Manual, ManualChunk, ManualChunkReview, ManualReviewSummary
 from src.chunking.text import TextChunk
 from src.jobs.ingestion import (
     apply_safe_chunk_autofixes,
@@ -148,6 +148,18 @@ def test_process_next_pending_manual_indexes_chunks(
             "too_long",
         }
         assert reviews[0].reviewer_model == "fake-reviewer"
+
+        summary = session.scalar(
+            select(ManualReviewSummary).where(
+                ManualReviewSummary.manual_id == manual.id
+            )
+        )
+        assert summary is not None
+        assert summary.initial_chunk_count == 2
+        assert summary.final_chunk_count == 2
+        assert summary.reviewed_count == 2
+        assert summary.applied_autofixes == 0
+        assert summary.estimated_cost_usd >= 0
 
 
 def test_process_next_pending_manual_marks_failure_when_no_text_is_extracted(

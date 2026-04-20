@@ -8,13 +8,16 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.chunking.text import TextChunk, build_text_chunks
 from src.core.config import settings
-from src.db.models import Manual, ManualChunk, ManualChunkReview
+from src.db.models import Manual, ManualChunk, ManualChunkReview, ManualReviewSummary
 from src.db.session import SessionLocal, initialize_database
 from src.parsers.pdf import extract_pdf_text_by_page
 from src.services.semantic_review import (
     ChunkReviewResult,
     GeminiSemanticReviewer,
+    ReviewMetricsSummary,
     SemanticReviewError,
+    build_review_metrics_summary,
+    is_manual_eligible_for_semantic_review,
     select_chunks_for_semantic_review,
 )
 from src.services.storage import ManualStorageService, get_manual_storage_service
@@ -143,10 +146,14 @@ def index_manual_chunks(
     manual: Manual,
     chunks: list[TextChunk],
     review_results: list[ChunkReviewResult],
+    summary: ReviewMetricsSummary,
 ) -> None:
     session.execute(delete(ManualChunk).where(ManualChunk.manual_id == manual.id))
     session.execute(
         delete(ManualChunkReview).where(ManualChunkReview.manual_id == manual.id)
+    )
+    session.execute(
+        delete(ManualReviewSummary).where(ManualReviewSummary.manual_id == manual.id)
     )
 
     for chunk_index, chunk in enumerate(chunks):
@@ -177,6 +184,28 @@ def index_manual_chunks(
             )
         )
 
+    session.add(
+        ManualReviewSummary(
+            manual_id=summary.manual_id,
+            initial_chunk_count=summary.initial_chunk_count,
+            final_chunk_count=summary.final_chunk_count,
+            reviewed_count=summary.reviewed_count,
+            skipped_count=summary.skipped_count,
+            error_count=summary.error_count,
+            merge_actions=summary.merge_actions,
+            split_actions=summary.split_actions,
+            keep_actions=summary.keep_actions,
+            regenerate_actions=summary.regenerate_actions,
+            applied_autofixes=summary.applied_autofixes,
+            avg_coherence_score=summary.avg_coherence_score,
+            avg_completeness_score=summary.avg_completeness_score,
+            avg_boundary_quality_score=summary.avg_boundary_quality_score,
+            estimated_input_tokens=summary.estimated_input_tokens,
+            estimated_output_tokens=summary.estimated_output_tokens,
+            estimated_cost_usd=summary.estimated_cost_usd,
+        )
+    )
+
     manual.status = "indexed"
     manual.chunk_count = len(chunks)
     manual.last_error = None
@@ -191,6 +220,8 @@ def build_chunk_review_observations(
     reviewer: GeminiSemanticReviewer,
 ) -> list[ChunkReviewResult]:
     if not settings.semantic_review_enabled:
+        return []
+    if not is_manual_eligible_for_semantic_review(manual):
         return []
 
     selections = select_chunks_for_semantic_review(
@@ -268,13 +299,21 @@ def process_next_pending_manual(
             fixed_chunks, applied_autofixes = apply_safe_chunk_autofixes(
                 chunks, review_results
             )
-            index_manual_chunks(session, manual, fixed_chunks, review_results)
+
+            summary = build_review_metrics_summary(
+                manual_id=manual.id,
+                initial_chunk_count=len(chunks),
+                final_chunk_count=len(fixed_chunks),
+                review_results=review_results,
+                applied_autofixes=applied_autofixes,
+            )
+            index_manual_chunks(session, manual, fixed_chunks, review_results, summary)
             log(
                 "worker",
                 (
                     f"Manual #{manual.id} indexado con {len(fixed_chunks)} chunks, "
                     f"{len(review_results)} revisiones semanticas y "
-                    f"{applied_autofixes} auto-fixes."
+                    f"{applied_autofixes} auto-fixes. costo_estimado=${summary.estimated_cost_usd:.6f}"
                 ),
             )
             return True

@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     semantic_review_merge_boundary_max: float = 0.6
     semantic_review_split_max_coherence: float = 0.65
     semantic_review_split_min_chars: int = 1800
+    semantic_review_enabled_languages: str = "es,en"
+    semantic_review_title_include_terms: str = ""
+    semantic_review_cost_input_per_1k_tokens: float = 0.00025
+    semantic_review_cost_output_per_1k_tokens: float = 0.00075
+    semantic_review_estimated_output_tokens: int = 120
 
     model_config = SettingsConfigDict(
         env_file=".env",

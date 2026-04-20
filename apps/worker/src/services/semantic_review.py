@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import dataclass
 from hashlib import sha1
 from urllib import error, request
@@ -29,6 +30,27 @@ class ChunkReviewResult:
     boundary_quality_score: float | None = None
     reason: str | None = None
     raw_response: str | None = None
+
+
+@dataclass(slots=True)
+class ReviewMetricsSummary:
+    manual_id: int
+    initial_chunk_count: int
+    final_chunk_count: int
+    reviewed_count: int
+    skipped_count: int
+    error_count: int
+    merge_actions: int
+    split_actions: int
+    keep_actions: int
+    regenerate_actions: int
+    applied_autofixes: int
+    avg_coherence_score: float | None
+    avg_completeness_score: float | None
+    avg_boundary_quality_score: float | None
+    estimated_input_tokens: int
+    estimated_output_tokens: int
+    estimated_cost_usd: float
 
 
 class SemanticReviewError(RuntimeError):
@@ -95,6 +117,99 @@ def select_chunks_for_semantic_review(
             )
 
     return selections
+
+
+def is_manual_eligible_for_semantic_review(manual: Manual) -> bool:
+    enabled_languages = [
+        value.strip().lower()
+        for value in settings.semantic_review_enabled_languages.split(",")
+        if value.strip()
+    ]
+    if enabled_languages and manual.document_language.lower() not in enabled_languages:
+        return False
+
+    include_terms = [
+        value.strip().lower()
+        for value in settings.semantic_review_title_include_terms.split(",")
+        if value.strip()
+    ]
+    if not include_terms:
+        return True
+
+    title = manual.title.lower()
+    return any(term in title for term in include_terms)
+
+
+def build_review_metrics_summary(
+    *,
+    manual_id: int,
+    initial_chunk_count: int,
+    final_chunk_count: int,
+    review_results: list[ChunkReviewResult],
+    applied_autofixes: int,
+) -> ReviewMetricsSummary:
+    reviewed = [
+        result for result in review_results if result.review_status == "reviewed"
+    ]
+    skipped_count = sum(
+        1 for result in review_results if result.review_status == "skipped"
+    )
+    error_count = sum(1 for result in review_results if result.review_status == "error")
+
+    actions = Counter((result.action or "keep") for result in review_results)
+
+    coherence_scores = [
+        result.coherence_score
+        for result in reviewed
+        if result.coherence_score is not None
+    ]
+    completeness_scores = [
+        result.completeness_score
+        for result in reviewed
+        if result.completeness_score is not None
+    ]
+    boundary_scores = [
+        result.boundary_quality_score
+        for result in reviewed
+        if result.boundary_quality_score is not None
+    ]
+
+    estimated_input_tokens = sum(
+        max(1, len(result.raw_response or "") // 4) for result in review_results
+    )
+    if reviewed:
+        estimated_input_tokens = max(
+            estimated_input_tokens,
+            len(reviewed) * settings.semantic_review_min_chars // 4,
+        )
+    estimated_output_tokens = len(review_results) * max(
+        1, settings.semantic_review_estimated_output_tokens
+    )
+    estimated_cost_usd = (
+        estimated_input_tokens / 1000.0
+    ) * settings.semantic_review_cost_input_per_1k_tokens + (
+        estimated_output_tokens / 1000.0
+    ) * settings.semantic_review_cost_output_per_1k_tokens
+
+    return ReviewMetricsSummary(
+        manual_id=manual_id,
+        initial_chunk_count=initial_chunk_count,
+        final_chunk_count=final_chunk_count,
+        reviewed_count=len(reviewed),
+        skipped_count=skipped_count,
+        error_count=error_count,
+        merge_actions=actions.get("merge_with_next", 0),
+        split_actions=actions.get("split", 0),
+        keep_actions=actions.get("keep", 0),
+        regenerate_actions=actions.get("regenerate", 0),
+        applied_autofixes=applied_autofixes,
+        avg_coherence_score=_avg_or_none(coherence_scores),
+        avg_completeness_score=_avg_or_none(completeness_scores),
+        avg_boundary_quality_score=_avg_or_none(boundary_scores),
+        estimated_input_tokens=estimated_input_tokens,
+        estimated_output_tokens=estimated_output_tokens,
+        estimated_cost_usd=round(estimated_cost_usd, 8),
+    )
 
 
 class GeminiSemanticReviewer:
@@ -213,3 +328,9 @@ def _to_float(value: object) -> float | None:
     if isinstance(value, (int, float)):
         return float(value)
     return None
+
+
+def _avg_or_none(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return round(sum(values) / len(values), 4)
