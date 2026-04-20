@@ -16,6 +16,7 @@ class User(Base):
     display_name: Mapped[str] = mapped_column(String(160))
     password_hash: Mapped[str] = mapped_column(String(255))
     roles: Mapped[list[str]] = mapped_column(JSON, default=list)
+    profile_settings: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

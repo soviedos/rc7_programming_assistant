@@ -1,19 +1,34 @@
-# Worker
+# Worker — Pipeline de ingestión documental
 
-Proceso asincrónico del sistema.
+Proceso asincrónico del RC7 Programming Assistant, dedicado al procesamiento de manuales PDF para el pipeline RAG.
+
+---
+
+## Stack técnico
+
+| Tecnología | Uso |
+|---|---|
+| Python 3.12+ | Runtime |
+| Redis | Coordinación de tareas con el backend |
+| pydantic-settings | Configuración por variables de entorno |
+
+---
 
 ## Estado actual
 
-Hoy funciona como base placeholder para el pipeline documental, manteniendo el lugar arquitectónico correcto sin ejecutar todavía ingestión real.
+El worker funciona como una base funcional placeholder que mantiene el lugar arquitectónico correcto en el stack. El loop de ejecución y la infraestructura de logging están implementados; el pipeline de ingestión real está pendiente.
 
 ## Responsabilidades objetivo
 
-- ingesta de PDFs
-- parsing y limpieza
-- chunking semántico
-- clasificación por robot y controlador
-- embeddings
-- indexación en PostgreSQL + pgvector
+| Etapa | Descripción |
+|---|---|
+| **Parsing** | Extracción de texto y estructura desde PDFs |
+| **Chunking** | Segmentación del contenido en unidades recuperables |
+| **Clasificación** | Detección de aplicabilidad por robot, ejes y versión |
+| **Embeddings** | Generación de vectores para búsqueda semántica |
+| **Indexación** | Carga de chunks y vectores en PostgreSQL + pgvector |
+
+---
 
 ## Pruebas
 

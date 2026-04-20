@@ -1,34 +1,40 @@
 # Estructura interna del worker
 
-## `jobs/`
+Organización del código fuente del pipeline de ingestión documental.
 
-Definicion de trabajos ejecutables.
+---
 
-## `parsers/`
+## Directorio `jobs/`
 
-Extraccion de texto desde PDFs y deteccion de estructura documental.
+Definición de trabajos ejecutables. Cada job encapsula una unidad de trabajo completa que puede ser disparada desde el backend vía Redis.
 
-## `chunking/`
+## Directorio `parsers/`
 
-Segmentacion del contenido en unidades utiles para retrieval.
+Extracción de texto desde PDFs y detección de estructura documental (capítulos, secciones, tablas, ejemplos de código).
 
-## `classifiers/`
+## Directorio `chunking/`
 
-Deteccion de aplicabilidad tecnica:
+Segmentación del contenido extraído en unidades útiles para retrieval. Los chunks se dimensionan para maximizar la relevancia en búsqueda semántica.
 
-- tipo de robot
-- numero de ejes
-- soporte de vision
-- versiones del controlador
+## Directorio `classifiers/`
 
-## `embeddings/`
+Detección de aplicabilidad técnica de cada chunk:
 
-Generacion y normalizacion de embeddings.
+| Dimensión | Descripción |
+|---|---|
+| Tipo de robot | 4-axis, 6-axis |
+| Soporte de visión | Habilitado / No habilitado |
+| Versión del controlador | Versión mínima requerida |
+| Aplicabilidad | Todos los robots o modelos específicos |
 
-## `indexing/`
+## Directorio `embeddings/`
 
-Carga de chunks y vectores en PostgreSQL + pgvector.
+Generación y normalización de embeddings vectoriales para cada chunk procesado.
 
-## `utils/`
+## Directorio `indexing/`
 
-Utilidades transversales del pipeline.
+Carga de chunks y vectores en PostgreSQL + pgvector, con metadatos de clasificación y referencia al documento original.
+
+## Directorio `utils/`
+
+Utilidades transversales del pipeline: logging, manejo de archivos temporales y helpers compartidos.

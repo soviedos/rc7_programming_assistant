@@ -67,6 +67,10 @@ export function SessionProfile() {
     }
   }
 
+  function handleProfileNavigation() {
+    router.push("/profile");
+  }
+
   return (
     <div className="session-profile">
       <div className="session-profile-copy">
@@ -75,6 +79,10 @@ export function SessionProfile() {
       </div>
 
       <div className="session-profile-actions">
+        <button className="session-profile-button" type="button" onClick={handleProfileNavigation}>
+          Perfil
+        </button>
+
         <select
           className="session-role-select"
           value={session.role}

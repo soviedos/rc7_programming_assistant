@@ -446,6 +446,7 @@ textarea {
   flex-wrap: wrap;
 }
 
+.session-profile-button,
 .session-role-select,
 .session-logout-button {
   min-height: 40px;
@@ -455,6 +456,7 @@ textarea {
   color: #f4f7fb;
 }
 
+.session-profile-button,
 .session-role-select {
   padding: 0 14px;
 }
@@ -1028,6 +1030,87 @@ textarea {
   margin-top: 12px;
 }
 
+.profile-panel {
+  min-height: 100%;
+}
+
+.profile-page-main {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.profile-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  margin-top: 24px;
+}
+
+.profile-card {
+  padding: 22px;
+  border-radius: 22px;
+  border: 1px solid rgba(193, 206, 229, 0.1);
+  background: rgba(25, 33, 46, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.profile-form-grid {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.profile-input {
+  min-height: 46px;
+  border-radius: 14px;
+  border: 1px solid rgba(193, 206, 229, 0.12);
+  background: rgba(23, 31, 45, 0.76);
+  color: #f2f6fb;
+  padding: 0 14px;
+}
+
+.profile-input-readonly {
+  color: rgba(214, 223, 236, 0.72);
+}
+
+.profile-actions {
+  display: flex;
+  justify-content: flex-start;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.profile-password-hint {
+  color: rgba(214, 223, 236, 0.66);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.profile-password-hint-list {
+  margin: 18px 0 0;
+  padding-left: 20px;
+}
+
+.profile-flash {
+  margin: 18px 0 0;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(193, 206, 229, 0.12);
+  line-height: 1.6;
+}
+
+.profile-flash-success {
+  background: rgba(40, 130, 77, 0.18);
+  border-color: rgba(71, 174, 111, 0.26);
+  color: #dffde7;
+}
+
+.profile-flash-error {
+  background: rgba(141, 35, 48, 0.18);
+  border-color: rgba(215, 51, 61, 0.26);
+  color: #ffe2e6;
+}
+
 .workspace-backdrop,
 .workspace-grid-floor,
 .workspace-dots,
@@ -1102,7 +1185,8 @@ textarea {
   .hero,
   .feature-grid,
   .admin-grid,
-  .admin-split-grid {
+  .admin-split-grid,
+  .profile-grid {
     grid-template-columns: 1fr;
   }
 

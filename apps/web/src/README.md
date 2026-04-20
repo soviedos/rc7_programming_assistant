@@ -1,38 +1,51 @@
 # Estructura interna del frontend
 
-## `app/`
+Organización del código fuente del frontend por tipo y responsabilidad.
 
-Aqui viviran las rutas principales:
+---
 
-- landing
-- login
-- workspace
-- admin
+## Directorio `app/`
 
-## `components/`
+Rutas y layouts de la aplicación (Next.js App Router):
 
-Componentes reutilizables y presentacionales.
+| Ruta | Archivo | Descripción |
+|---|---|---|
+| `/` | `page.tsx` | Landing / Login |
+| `/app` | `app/page.tsx` | Workspace del asistente |
+| `/admin` | `admin/page.tsx` | Consola administrativa |
 
-Se separan de `features/` para no mezclar piezas visuales con logica de negocio.
+## Directorio `components/`
 
-## `features/`
+Componentes reutilizables y presentacionales, separados de `features/` para no mezclar piezas visuales con lógica de negocio.
 
-Modulos funcionales del producto, por ejemplo:
+| Subdirectorio | Contenido |
+|---|---|
+| `auth/` | Formulario de login, rutas protegidas |
+| `chat/` | Componentes de conversación |
+| `layout/` | Shell de la aplicación, header, perfil de sesión |
+| `shared/` | Componentes genéricos reutilizables |
 
-- autenticacion
-- historial
-- workspace de prompts
-- referencias documentales
-- configuracion de robot
+## Directorio `features/`
 
-## `lib/`
+Módulos funcionales del producto, agrupados por dominio:
+
+| Módulo | Responsabilidad |
+|---|---|
+| `auth/` | Lógica de autenticación |
+| `history/` | Historial de consultas |
+| `workspace/` | Panel principal del asistente |
+| `references/` | Referencias documentales |
+| `robots/` | Configuración del robot |
+| `admin/` | Funcionalidades administrativas |
+
+## Directorio `lib/`
 
 Clientes HTTP, helpers de formateo, manejo de tokens y utilidades transversales del cliente.
 
-## `styles/`
+## Directorio `styles/`
 
-Estilos globales y tokens visuales.
+Estilos globales y tokens de diseño visual.
 
-## `types/`
+## Directorio `types/`
 
-Tipos TypeScript compartidos por toda la app web.
+Tipos TypeScript compartidos por toda la aplicación web.

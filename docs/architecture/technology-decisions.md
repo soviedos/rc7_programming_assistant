@@ -1,51 +1,55 @@
-# Decisiones Tecnologicas
+# Decisiones Tecnológicas
 
-## Next.js para frontend
+Resumen de las tecnologías seleccionadas para el proyecto y la justificación detrás de cada elección.
 
-Se eligio por:
+---
 
-- buena experiencia de desarrollo en VS Code
-- rutas y layouts modernos
-- facilidad para construir una landing y un workspace en una sola app
-- integracion natural con TypeScript
+## Frontend — Next.js
 
-## FastAPI para backend
+| Criterio | Detalle |
+|---|---|
+| **Rutas y layouts** | App Router permite definir rutas protegidas, layouts anidados y separación clara entre landing, workspace y administración |
+| **TypeScript** | Integración nativa con tipado estático |
+| **Ecosistema** | Soporte amplio de componentes, testing y herramientas de desarrollo |
+| **Experiencia de desarrollo** | Hot reload, integración con VS Code y debugging integrado |
 
-Se eligio por:
+## Backend — FastAPI
 
-- soporte excelente para Python
-- tipado y validacion
-- facilidad para documentar APIs
-- buena integracion con servicios de IA y pipelines de backend
+| Criterio | Detalle |
+|---|---|
+| **Rendimiento** | Framework asincrónico de alto rendimiento sobre Python |
+| **Tipado y validación** | Pydantic integrado para validación automática de request/response |
+| **Documentación** | Swagger UI y ReDoc generados automáticamente |
+| **Ecosistema IA** | Compatibilidad directa con librerías de ML, embeddings y SDKs de LLMs |
 
-## Worker Python separado
+## Worker — Python independiente
 
-Se eligio por:
+| Criterio | Detalle |
+|---|---|
+| **Aislamiento** | Proceso separado para parsing y chunking pesado, sin bloquear requests HTTP |
+| **Reindexación** | Capacidad de reprocesar documentos completos sin afectar la API |
+| **Coordinación** | Comunicación con el backend a través de Redis como broker de tareas |
 
-- necesidad de parsing y chunking pesado
-- posibilidad de reindexacion
-- menor riesgo de bloquear requests web
+## Base de datos — PostgreSQL + pgvector
 
-## PostgreSQL + pgvector
+| Criterio | Detalle |
+|---|---|
+| **Unificación** | Una sola base para datos transaccionales y almacenamiento vectorial |
+| **Complejidad operativa** | Menor carga operativa que mantener bases separadas (e.g., Pinecone, Weaviate) |
+| **Volumen** | Adecuado para el volumen inicial de manuales DENSO |
 
-Se eligio por:
+## Object storage — MinIO
 
-- una sola base para datos transaccionales y vectores
-- menor complejidad operativa
-- soporte adecuado para el volumen inicial de manuales
+| Criterio | Detalle |
+|---|---|
+| **Compatibilidad** | API compatible con S3, facilitando migración futura a AWS/GCP |
+| **Despliegue local** | Contenedor ligero sin dependencia de proveedores cloud |
+| **Independencia** | Almacenamiento desacoplado del sistema de archivos del host |
 
-## MinIO
+## Cache y colas — Redis
 
-Se eligio para el stack local contenedorizado por:
-
-- compatibilidad tipo S3
-- despliegue simple en contenedor
-- independencia de proveedores cloud en desarrollo
-
-## Redis
-
-Se eligio por:
-
-- simplicidad
-- soporte de colas y cache
-- adopcion amplia en ecosistemas Python
+| Criterio | Detalle |
+|---|---|
+| **Versatilidad** | Soporta colas de tareas, cache y pub/sub en un solo servicio |
+| **Ecosistema** | Adopción amplia con clientes maduros en Python y Node.js |
+| **Simplicidad** | Configuración mínima para el stack de desarrollo local |

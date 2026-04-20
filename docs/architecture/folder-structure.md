@@ -2,78 +2,87 @@
 
 ## Objetivo
 
-La estructura se definio para que cualquier desarrollador pueda abrir el proyecto en VS Code y entender rapidamente donde vive cada responsabilidad.
+Organizar el proyecto de forma que cualquier desarrollador pueda identificar rápidamente dónde vive cada responsabilidad al abrir el repositorio.
 
-## Arbol principal
+---
+
+## Árbol principal
 
 ```text
-apps/
-  web/
-  api/
-  worker/
-docs/
-  architecture/
-  backend/
-  frontend/
-  rag/
-  operations/
-  decisions/
-infra/
-storage/
+rc7_programming_assistant/
+├── apps/
+│   ├── api/                    # Backend FastAPI
+│   │   ├── src/
+│   │   │   ├── api/v1/         # Endpoints versionados (routes, schemas)
+│   │   │   ├── core/           # Configuración, seguridad, dependencias base
+│   │   │   ├── db/             # Migraciones, seeds, sesión de base de datos
+│   │   │   ├── models/         # Modelos de dominio y persistencia
+│   │   │   ├── repositories/   # Capa de acceso a datos
+│   │   │   ├── services/       # Lógica de negocio por dominio
+│   │   │   ├── tasks/          # Tareas asincrónicas
+│   │   │   └── workers/        # Procesos de fondo iniciados desde la API
+│   │   └── tests/              # Pruebas del backend
+│   ├── web/                    # Frontend Next.js
+│   │   └── src/
+│   │       ├── app/            # Rutas y layouts (App Router)
+│   │       ├── components/     # Componentes reutilizables
+│   │       ├── features/       # Módulos funcionales por dominio
+│   │       ├── lib/            # Clientes HTTP y utilidades
+│   │       ├── styles/         # Estilos globales
+│   │       └── types/          # Tipos TypeScript compartidos
+│   └── worker/                 # Worker de ingestión documental
+│       ├── src/
+│       │   ├── jobs/           # Definición de trabajos ejecutables
+│       │   ├── parsers/        # Extracción de texto desde PDFs
+│       │   ├── chunking/       # Segmentación para retrieval
+│       │   ├── classifiers/    # Detección de aplicabilidad técnica
+│       │   ├── embeddings/     # Generación de vectores
+│       │   ├── indexing/       # Carga en PostgreSQL + pgvector
+│       │   └── utils/          # Utilidades del pipeline
+│       └── tests/              # Pruebas del worker
+├── docs/                       # Documentación técnica
+│   ├── architecture/           # Arquitectura y diseño
+│   ├── backend/                # Contratos API y módulos
+│   ├── frontend/               # Layout y criterios de UX
+│   ├── operations/             # Desarrollo local y testing
+│   ├── rag/                    # Pipeline de ingestión
+│   └── decisions/              # Architecture Decision Records
+├── infra/                      # Infraestructura y contenedores
+│   ├── docker/                 # Dockerfiles
+│   ├── nginx/                  # Configuración de reverse proxy
+│   ├── minio/                  # Configuración de object storage
+│   ├── postgres/               # Scripts de inicialización de BD
+│   └── redis/                  # Configuración de cache y colas
+├── storage/                    # Volúmenes locales de desarrollo
+├── docker-compose.yml
+├── .env.example
+└── .gitignore
 ```
 
-## Explicacion por area
+---
 
-### `apps/web`
+## Criterios de organización
 
-Aplicacion de interfaz.
+### Versionado de la API — `apps/api/src/api/v1/`
 
-#### `src/app`
-Rutas, layouts y entry points de la aplicacion.
+Los endpoints se agrupan bajo un prefijo versionado (`/api/v1/`) para permitir la evolución de contratos sin romper integraciones existentes.
 
-#### `src/components`
-Piezas visuales reutilizables.
+### Servicios de negocio — `apps/api/src/services/`
 
-#### `src/features`
-Agrupa codigo por funcionalidad del negocio, no por tipo tecnico.
+La lógica de negocio se aísla en servicios por dominio (`auth`, `chat`, `users`, `retrieval`, etc.), manteniendo los endpoints como adaptadores delgados.
 
-#### `src/lib`
-Helpers del frontend, clientes HTTP y utilidades compartidas.
+### Repositorios — `apps/api/src/repositories/`
 
-### `apps/api/src/api/v1`
+El acceso a datos se encapsula en repositorios, desacoplando el dominio de los detalles de persistencia.
 
-Contendra endpoints versionados.
+### Módulos funcionales del frontend — `apps/web/src/features/`
 
-Esto prepara el proyecto para evolucionar sin romper contratos rapidamente.
+El código del frontend se agrupa por funcionalidad del producto (autenticación, workspace, historial), no por tipo técnico.
 
-### `apps/api/src/services`
+### Clasificadores del worker — `apps/worker/src/classifiers/`
 
-Coloca la logica de negocio en servicios y evita meter reglas complejas dentro de los endpoints.
+Módulo dedicado a detectar la aplicabilidad técnica de cada chunk (tipo de robot, número de ejes, versión del controlador). Esta carpeta existe porque el filtrado por contexto técnico es central en el producto.
 
-### `apps/api/src/repositories`
+### Documentación — `docs/`
 
-Encapsula acceso a datos y mantiene el dominio desacoplado de detalles de persistencia.
-
-### `apps/worker/src/parsers`
-
-Parsing de PDFs y transformacion a una forma entendible por el pipeline RAG.
-
-### `apps/worker/src/classifiers`
-
-Dedicado a detectar aplicabilidad por robot, version y opciones.
-
-Esta carpeta existe porque esa necesidad es central en tu producto.
-
-### `docs`
-
-Documentacion viva del proyecto.
-
-Separamos documentacion tecnica por temas para que no quede enterrada en un README gigante.
-
-### `infra`
-
-Configuraciones de despliegue local y soporte de contenedores.
-
-### `storage`
-
-Persistencia local usada por MinIO o por procesos auxiliares en desarrollo.
+Documentación técnica separada por dominio para evitar un README monolítico. Cada sección se mantiene junto con los cambios funcionales correspondientes.

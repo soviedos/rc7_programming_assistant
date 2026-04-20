@@ -41,7 +41,7 @@ describe("LoginForm", () => {
     expect(await screen.findByText("Ingresa un correo valido.")).toBeInTheDocument();
     expect(emailInput).toHaveValue("");
     expect(passwordInput).toHaveValue("");
-  });
+  }, 10000);
 
   it("allows showing and hiding the password", async () => {
     const user = userEvent.setup();

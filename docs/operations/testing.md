@@ -1,61 +1,74 @@
 # Testing
 
-## Objetivo
+## Estrategia
 
-Validar automáticamente el comportamiento que ya está implementado hoy, sin simular cobertura sobre módulos todavía no construidos.
+Las pruebas automatizadas validan exclusivamente el comportamiento implementado. No se simula cobertura sobre módulos que aún no existen.
 
-## Backend `apps/api`
+---
 
-Se usa `pytest` para validar:
+## Backend — `apps/api/`
 
-- login
-- sesión actual
-- cambio de rol
-- logout
-- root
-- healthcheck
-- chat placeholder
-- admin status placeholder
-- utilidades de password, roles y tokens
+**Framework**: pytest
 
-Las pruebas usan SQLite temporal y overrides de dependencias de FastAPI.
+**Cobertura actual**:
 
-## Frontend `apps/web`
+| Área | Pruebas |
+|---|---|
+| Autenticación | Login, sesión actual, cambio de rol, logout |
+| Rutas base | Root (`/`), healthcheck |
+| Contratos placeholder | Chat generate, admin status |
+| Utilidades | Hashing de passwords, validación de roles, generación de tokens |
 
-Se usa `Vitest + Testing Library` para validar:
-
-- formulario de login
-- validación amigable
-- limpieza del formulario al fallar
-- mostrar u ocultar contraseña
-- redirect por rol
-- perfil de sesión
-- protección de rutas
-- normalización de errores del API
-
-## Worker `apps/worker`
-
-Se validan:
-
-- logging base
-- ciclo placeholder del worker
-
-## Comandos
-
-### Backend
+**Entorno de pruebas**: SQLite en memoria con overrides de dependencias de FastAPI.
 
 ```bash
 docker compose exec api python -m pytest
 ```
 
-### Frontend
+---
+
+## Frontend — `apps/web/`
+
+**Framework**: Vitest + Testing Library
+
+**Cobertura actual**:
+
+| Área | Pruebas |
+|---|---|
+| Login | Formulario, validación amigable, limpieza al fallar, mostrar/ocultar contraseña |
+| Navegación | Redirect por rol, protección de rutas |
+| Sesión | Perfil de sesión, resolución de usuario actual |
+| Errores | Normalización de errores de la API |
 
 ```bash
 docker compose exec web npm test
 ```
 
-### Worker
+---
+
+## Worker — `apps/worker/`
+
+**Framework**: pytest
+
+**Cobertura actual**:
+
+| Área | Pruebas |
+|---|---|
+| Logging | Configuración base del sistema de logs |
+| Worker loop | Ciclo placeholder de ejecución |
 
 ```bash
+docker compose exec worker python -m pytest
+```
+
+---
+
+## Ejecución completa
+
+Para ejecutar todas las suites desde la raíz del proyecto:
+
+```bash
+docker compose exec api python -m pytest
+docker compose exec web npm test
 docker compose exec worker python -m pytest
 ```

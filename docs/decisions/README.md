@@ -1,10 +1,19 @@
-# Decision Records
+# Architecture Decision Records
 
-Aqui iran las decisiones tecnicas importantes del proyecto en formato ADR o notas equivalentes.
+Registro de decisiones técnicas relevantes del proyecto, documentadas en formato ADR (Architecture Decision Record).
 
-## Ejemplos de decisiones futuras
+---
 
-- por que se eligio un modelo Gemini especifico
-- como se versionan los prompts del sistema
-- como se detecta aplicabilidad por tipo de robot
-- como se valida el codigo PAC antes de mostrarlo
+## Decisiones registradas
+
+| ID | Título | Estado |
+|---|---|---|
+| [ADR-0001](./ADR-0001-monolithic-modular-architecture.md) | Monolito modular con frontend separado | Aprobado |
+
+## Decisiones pendientes de documentación
+
+- Selección del modelo Gemini y estrategia de prompts
+- Versionado de prompts del sistema
+- Detección de aplicabilidad técnica por tipo de robot
+- Validación de código PAC antes de presentarlo al usuario
+- Estrategia de migración de base de datos

@@ -1,41 +1,50 @@
 # Frontend
 
-## Objetivo
+Documentación de la interfaz web del RC7 Programming Assistant.
 
-El frontend debe comportarse como una herramienta de ingeniería asistida, no como un chat genérico. La interfaz separa acceso, trabajo operativo y administración bajo una misma identidad visual.
+---
 
-## Rutas actuales
+## Contenido
 
-### `/`
+| Documento | Descripción |
+|---|---|
+| [workspace-layout.md](./workspace-layout.md) | Diseño del workspace principal del asistente |
 
-Pantalla de login con:
+## Filosofía de diseño
 
-- correo autorizado
-- contraseña
-- opción para mostrar u ocultar contraseña
-- validación amigable
-- acceso visual reservado para Google SSO futuro
+La interfaz se comporta como una **herramienta de ingeniería asistida**, no como un chat genérico. El diseño separa el acceso, el trabajo operativo y la administración bajo una identidad visual consistente.
 
-### `/app`
+---
 
-Workspace principal con:
+## Rutas implementadas
 
-- configuración del robot en sidebar izquierdo
-- conversación y código PAC en panel central
-- referencias e historial en sidebar derecho
+### `/` — Login
 
-### `/admin`
+- Autenticación con correo autorizado y contraseña
+- Opción para mostrar/ocultar contraseña
+- Validación amigable con mensajes de error claros
+- Espacio reservado para Google SSO (pendiente)
 
-Consola administrativa con:
+### `/app` — Workspace del asistente
 
-- resumen operativo
-- usuarios autorizados en modo visual
-- parámetros de Gemini en modo visual
-- base documental en modo visual
+- Sidebar izquierdo: configuración del robot
+- Panel central: conversación y código PAC
+- Sidebar derecho: referencias e historial
+
+### `/admin` — Consola administrativa
+
+- Resumen operativo del sistema
+- Usuarios autorizados (visualización)
+- Parámetros del modelo Gemini (visualización)
+- Base documental (visualización)
+
+---
 
 ## Criterios de diseño
 
-- mismo lenguaje visual entre login, workspace y administración
-- navegación resuelta por sesión, no por credenciales hardcodeadas en la UI
-- layout adaptable
-- foco en legibilidad del código PAC
+| Criterio | Descripción |
+|---|---|
+| **Consistencia visual** | Mismo lenguaje de diseño entre login, workspace y administración |
+| **Navegación por sesión** | Las rutas se protegen según la sesión activa, sin credenciales en el frontend |
+| **Layout adaptable** | Estructura responsive que prioriza la legibilidad del código PAC |
+| **Contexto técnico explícito** | La configuración del robot siempre es visible junto a la conversación |

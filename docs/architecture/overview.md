@@ -2,78 +2,80 @@
 
 ## Resumen
 
-La arquitectura del proyecto es un `monolito modular con frontend separado`, ejecutado completamente en contenedores. Esta base permite crecer hacia un asistente RAG especializado en PAC para DENSO RC7 sin introducir microservicios prematuros.
+El proyecto implementa una arquitectura de **monolito modular con frontend separado**, ejecutado completamente en contenedores Docker. Este diseño permite evolucionar hacia un asistente RAG especializado en programación PAC para DENSO RC7 sin introducir la complejidad de microservicios prematuros.
 
-## Componentes actuales
+---
 
-### Frontend `apps/web`
+## Componentes
 
-Responsable de:
+### Frontend — `apps/web/`
 
-- login
-- rutas protegidas
-- workspace del asistente
-- consola administrativa
-- cambio de rol desde la sesión activa
+| Aspecto | Detalle |
+|---|---|
+| Tecnología | Next.js + React + TypeScript |
+| Puerto | 3000 |
+| Responsabilidades | Login, rutas protegidas, workspace del asistente, consola administrativa, cambio de rol |
 
-### Backend `apps/api`
+### Backend — `apps/api/`
 
-Responsable de:
+| Aspecto | Detalle |
+|---|---|
+| Tecnología | FastAPI + SQLAlchemy + Pydantic |
+| Puerto | 8000 |
+| Responsabilidades | Autenticación, sesión por cookie firmada, selección de rol activo, endpoints de administración y chat, futura orquestación con Gemini y retrieval |
 
-- autenticación con correo y contraseña
-- sesión por cookie firmada
-- selección de rol activo
-- endpoints base de administración y chat
-- futura orquestación con Gemini y retrieval
+### Worker — `apps/worker/`
 
-### Worker `apps/worker`
-
-Reservado para:
-
-- ingestión documental
-- parsing
-- chunking
-- embeddings
-- reindexación
-
-Hoy existe en modo placeholder, pero ya ocupa su lugar arquitectónico correcto.
+| Aspecto | Detalle |
+|---|---|
+| Tecnología | Python + Redis |
+| Responsabilidades | Ingestión documental, parsing, chunking, embeddings, indexación |
+| Estado | Placeholder funcional; ocupa su lugar arquitectónico para el pipeline RAG |
 
 ### PostgreSQL + pgvector
 
-Base transaccional principal y futura base vectorial. Actualmente ya soporta usuarios autorizados y autenticación.
+Base de datos transaccional principal y futura base vectorial. Actualmente soporta la persistencia de usuarios autorizados y la autenticación del sistema.
 
 ### MinIO
 
-Almacenamiento objetual para PDFs originales y derivados del pipeline documental.
+Almacenamiento de objetos compatible con S3 para PDFs originales y derivados del pipeline documental.
 
 ### Redis
 
-Coordinación de tareas asincrónicas y caché ligera.
+Coordinación de tareas asincrónicas entre el backend y el worker, y caché ligera de operaciones frecuentes.
 
-## Flujo implementado hoy
+---
 
-1. El usuario accede al login.
-2. El frontend envía credenciales al backend.
-3. El backend valida el usuario activo en PostgreSQL.
-4. Se emite una cookie de sesión HttpOnly.
-5. El frontend consulta `/auth/me` para proteger rutas y resolver navegación.
-6. El usuario puede cambiar de `admin` a `user` o viceversa si su perfil lo permite.
+## Flujo de autenticación (implementado)
 
-## Flujo objetivo RAG
+```text
+1. Usuario accede al login (/)
+2. Frontend envía credenciales → POST /api/v1/auth/login
+3. Backend valida usuario activo en PostgreSQL
+4. Se emite cookie de sesión HttpOnly con JWT firmado
+5. Frontend consulta GET /api/v1/auth/me para proteger rutas
+6. Usuario puede cambiar rol (admin ↔ user) si su perfil lo permite
+```
 
-1. Un administrador carga un manual PDF.
-2. El backend registra el documento y delega al worker.
-3. El worker parsea y clasifica por robot, controlador y tema.
-4. PostgreSQL + pgvector guarda chunks y embeddings.
-5. El backend recupera contexto filtrado.
-6. Gemini responde con código PAC y referencias.
+## Flujo RAG (objetivo)
 
-## Justificación global
+```text
+1. Administrador carga un manual PDF → MinIO
+2. Backend registra el documento y delega al worker vía Redis
+3. Worker parsea, clasifica por robot/controlador y genera chunks
+4. Chunks + embeddings se indexan en PostgreSQL + pgvector
+5. Backend recupera contexto filtrado por configuración del robot
+6. Gemini genera respuesta con código PAC y referencias citadas
+```
 
-Esta arquitectura prioriza:
+---
 
-- simplicidad operativa
-- trazabilidad
-- seguridad centralizada
-- despliegue reproducible con Docker
-- crecimiento gradual hacia RAG real
+## Principios de diseño
+
+| Principio | Justificación |
+|---|---|
+| **Simplicidad operativa** | Un solo `docker compose up` levanta todo el sistema |
+| **Trazabilidad** | Cada acción pasa por el backend, facilitando auditoría |
+| **Seguridad centralizada** | Autenticación y autorización resueltas exclusivamente en el backend |
+| **Despliegue reproducible** | Contenedores con healthchecks y dependencias declarativas |
+| **Crecimiento gradual** | La estructura soporta RAG real sin refactoring arquitectónico |

@@ -1,116 +1,237 @@
 # RC7 Programming Assistant
 
-Aplicación web para asistir programación PAC sobre robots DENSO con controlador RC7, enfocada en producir respuestas técnicas y código listo para copiar y pegar en WinCaps III.
+> Asistente web especializado en programación PAC para robots DENSO con controlador RC7.  
+> Genera respuestas técnicas y código listo para copiar en WinCaps III, respaldado por Retrieval-Augmented Generation (RAG) sobre manuales oficiales DENSO.
 
-## Qué resuelve este proyecto
+---
 
-- autenticación con usuarios autorizados y sesiones persistentes
-- separación de experiencia entre usuario y administrador
-- base arquitectónica para RAG sobre manuales PDF DENSO
-- interfaz web adaptable con identidad visual consistente
-- salida orientada a programación PAC y troubleshooting
+## Descripción
 
-## Estado actual consolidado
+RC7 Programming Assistant es una plataforma web que combina un backend de autenticación y orquestación, un frontend orientado a ingeniería y un pipeline de procesamiento documental para ofrecer asistencia contextualizada en programación PAC, troubleshooting y configuración de robots DENSO RC7.
 
-### Implementado hoy
+### Objetivos principales
 
-- `Frontend Next.js` con rutas:
-  - `/` login
-  - `/app` workspace del asistente
-  - `/admin` consola administrativa
-- `Backend FastAPI` con:
-  - `POST /api/v1/auth/login`
-  - `GET /api/v1/auth/me`
-  - `POST /api/v1/auth/switch-role`
-  - `POST /api/v1/auth/logout`
-  - `GET /api/v1/health/`
-  - `GET /api/v1/admin/status`
-  - `POST /api/v1/chat/generate`
-- `PostgreSQL` como persistencia real de usuarios autorizados
-- `JWT por cookie HttpOnly` para sesión
-- `Bootstrap admin` por variables de entorno
-- stack contenedorizado con `web`, `api`, `worker`, `postgres`, `redis` y `minio`
-- pruebas automatizadas para backend, frontend y worker
+| Objetivo | Descripción |
+|---|---|
+| **Asistencia técnica PAC** | Generación de código PAC con referencias a manuales oficiales |
+| **Autenticación segura** | Sesiones persistentes con JWT en cookies HttpOnly |
+| **Administración centralizada** | Gestión de usuarios, parámetros del modelo y base documental |
+| **RAG especializado** | Recuperación de contexto filtrado por robot, controlador y versión |
+| **Despliegue reproducible** | Stack completo orquestado con Docker Compose |
 
-### Placeholder o pendiente
-
-- Google SSO real
-- CRUD administrativo real de usuarios
-- integración real con Gemini
-- pipeline real de ingestión y retrieval de manuales
-- validación PAC real más allá de mocks visuales
+---
 
 ## Arquitectura
 
-La solución sigue un `monolito modular con frontend separado`:
+El proyecto sigue una arquitectura de **monolito modular con frontend separado**, diseñada para mantener la simplicidad operativa sin sacrificar la separación de responsabilidades.
 
-- `apps/web`: UI, rutas protegidas y experiencia del usuario
-- `apps/api`: autenticación, reglas de negocio y contratos HTTP
-- `apps/worker`: procesamiento asincrónico de documentos
-- `postgres + pgvector`: datos transaccionales y futura base vectorial
-- `minio`: almacenamiento de PDFs y derivados
-- `redis`: coordinación de trabajos y cache ligera
+```text
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Frontend   │────▶│   Backend   │────▶│   Worker    │
+│   Next.js    │     │   FastAPI   │     │   Python    │
+│  :3000       │     │  :8000      │     │             │
+└─────────────┘     └──────┬──────┘     └──────┬──────┘
+                           │                    │
+                    ┌──────┴──────┐      ┌──────┴──────┐
+                    │  PostgreSQL │      │    MinIO     │
+                    │  + pgvector │      │  (S3-compat) │
+                    │  :5432      │      │  :9000       │
+                    └─────────────┘      └─────────────┘
+                           │
+                    ┌──────┴──────┐
+                    │    Redis    │
+                    │  :6379      │
+                    └─────────────┘
+```
 
-Esta decisión mantiene la operación simple, pero deja el sistema listo para crecer hacia RAG real.
+| Componente | Directorio | Responsabilidad |
+|---|---|---|
+| **Frontend** | `apps/web/` | Interfaz de usuario, rutas protegidas, workspace del asistente |
+| **Backend** | `apps/api/` | Autenticación, contratos HTTP, orquestación de servicios |
+| **Worker** | `apps/worker/` | Pipeline de ingestión documental y generación de embeddings |
+| **PostgreSQL + pgvector** | — | Datos transaccionales y almacenamiento vectorial |
+| **MinIO** | — | Almacenamiento de PDFs originales (compatible con S3) |
+| **Redis** | — | Coordinación de tareas asincrónicas y caché |
 
-## Estructura principal
+> Para detalles arquitectónicos, consulte [docs/architecture/overview.md](./docs/architecture/overview.md).
+
+---
+
+## Estructura del repositorio
 
 ```text
 rc7_programming_assistant/
 ├── apps/
-│   ├── api/
-│   ├── web/
-│   └── worker/
-├── docs/
-├── infra/
-└── storage/
+│   ├── api/          # Backend FastAPI
+│   ├── web/          # Frontend Next.js
+│   └── worker/       # Worker de ingestión documental
+├── docs/             # Documentación técnica del proyecto
+│   ├── architecture/ # Arquitectura y decisiones de diseño
+│   ├── backend/      # Contratos API y módulos
+│   ├── frontend/     # Layout y criterios de UX
+│   ├── operations/   # Desarrollo local y testing
+│   ├── rag/          # Pipeline de ingestión documental
+│   └── decisions/    # Architecture Decision Records (ADR)
+├── infra/            # Dockerfiles y configuración de servicios
+│   ├── docker/
+│   ├── nginx/
+│   ├── minio/
+│   ├── postgres/
+│   └── redis/
+├── storage/          # Volúmenes locales para desarrollo
+├── docker-compose.yml
+└── .env.example
 ```
 
-## Arranque local
+---
+
+## Requisitos previos
+
+- [Docker](https://docs.docker.com/get-docker/) >= 24.0
+- [Docker Compose](https://docs.docker.com/compose/install/) >= 2.20
+- Archivo `.env` configurado (ver sección de configuración)
+
+---
+
+## Inicio rápido
+
+### 1. Clonar el repositorio
+
+```bash
+git clone https://github.com/soviedos/rc7_programming_assistant.git
+cd rc7_programming_assistant
+```
+
+### 2. Configurar variables de entorno
+
+```bash
+cp .env.example .env
+```
+
+Edite `.env` y configure al menos las siguientes variables:
+
+```env
+BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+BOOTSTRAP_ADMIN_PASSWORD=<contraseña-segura>
+JWT_SECRET=<secreto-aleatorio>
+```
+
+### 3. Levantar el stack
 
 ```bash
 docker compose up --build -d
 ```
 
+### 4. Verificar servicios
+
+```bash
+docker compose ps
+curl -s http://localhost:8000/api/v1/health/ | python3 -m json.tool
+```
+
+---
+
 ## Servicios expuestos
 
-- Web: `http://localhost:3000`
-- API: `http://localhost:8000`
-- Swagger: `http://localhost:8000/docs`
-- MinIO API: `http://localhost:9000`
-- MinIO Console: `http://localhost:9001`
-- PostgreSQL: `localhost:5432`
-- Redis: `localhost:6379`
+| Servicio | URL | Descripción |
+|---|---|---|
+| Frontend | http://localhost:3000 | Interfaz web principal |
+| API | http://localhost:8000 | Backend REST |
+| Swagger UI | http://localhost:8000/docs | Documentación interactiva de la API |
+| MinIO Console | http://localhost:9001 | Administración de object storage |
+| PostgreSQL | localhost:5432 | Base de datos (acceso directo) |
+| Redis | localhost:6379 | Cache y colas (acceso directo) |
+
+---
+
+## Endpoints de la API
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/api/v1/health/` | Healthcheck del servicio |
+| `POST` | `/api/v1/auth/login` | Inicio de sesión |
+| `GET` | `/api/v1/auth/me` | Sesión actual del usuario |
+| `POST` | `/api/v1/auth/switch-role` | Cambio de rol activo |
+| `POST` | `/api/v1/auth/logout` | Cierre de sesión |
+| `GET` | `/api/v1/admin/status` | Estado administrativo |
+| `POST` | `/api/v1/chat/generate` | Generación de respuesta del asistente |
+
+> Documentación completa disponible en [Swagger UI](http://localhost:8000/docs) con el stack en ejecución.
+
+---
 
 ## Testing
 
-### Backend
+Todas las suites de prueba se ejecutan dentro de los contenedores:
 
 ```bash
+# Backend (pytest)
 docker compose exec api python -m pytest
-```
 
-### Frontend
-
-```bash
+# Frontend (vitest)
 docker compose exec web npm test
-```
 
-### Worker
-
-```bash
+# Worker (pytest)
 docker compose exec worker python -m pytest
 ```
 
-## Documentación clave
+> Para detalles sobre la estrategia de testing, consulte [docs/operations/testing.md](./docs/operations/testing.md).
 
-- [docs/architecture/overview.md](./docs/architecture/overview.md)
-- [docs/backend/api-modules.md](./docs/backend/api-modules.md)
-- [docs/frontend/workspace-layout.md](./docs/frontend/workspace-layout.md)
-- [docs/operations/local-development.md](./docs/operations/local-development.md)
-- [docs/operations/testing.md](./docs/operations/testing.md)
-- [docs/rag/manual-ingestion.md](./docs/rag/manual-ingestion.md)
+---
 
-## Nota operativa
+## Estado del proyecto
 
-Las credenciales iniciales deben vivir en variables de entorno y nunca en la interfaz. La documentación y las pruebas ya reflejan el estado real del sistema, no el scaffold original.
+### Implementado
+
+- Autenticación completa con sesión por cookie HttpOnly y JWT
+- Bootstrap de administrador por variables de entorno
+- Frontend con login, workspace del asistente y consola administrativa
+- Stack contenedorizado con healthchecks y dependencias gestionadas
+- Suite de pruebas automatizadas (backend, frontend, worker)
+
+### En desarrollo
+
+- Integración con Google Gemini para generación de respuestas
+- Pipeline de ingestión de manuales PDF (parsing, chunking, embeddings)
+- Búsqueda vectorial con pgvector y filtrado por aplicabilidad técnica
+- CRUD administrativo completo de usuarios
+- Autenticación con Google SSO
+
+> Consulte [docs/operations/scaffold-status.md](./docs/operations/scaffold-status.md) para el estado detallado.
+
+---
+
+## Documentación
+
+| Documento | Descripción |
+|---|---|
+| [Arquitectura general](./docs/architecture/overview.md) | Componentes, flujos y justificación técnica |
+| [Estructura de carpetas](./docs/architecture/folder-structure.md) | Organización del repositorio |
+| [Decisiones tecnológicas](./docs/architecture/technology-decisions.md) | Justificación de cada tecnología |
+| [Módulos del backend](./docs/backend/api-modules.md) | Endpoints y servicios implementados |
+| [Layout del workspace](./docs/frontend/workspace-layout.md) | Diseño de la interfaz principal |
+| [Desarrollo local](./docs/operations/local-development.md) | Guía de arranque y operación |
+| [Testing](./docs/operations/testing.md) | Estrategia y comandos de prueba |
+| [Ingestión de manuales](./docs/rag/manual-ingestion.md) | Pipeline RAG planificado |
+| [ADR-0001](./docs/decisions/ADR-0001-monolithic-modular-architecture.md) | Decisión de arquitectura modular |
+
+---
+
+## Tecnologías principales
+
+| Capa | Tecnología | Versión mínima |
+|---|---|---|
+| Frontend | Next.js + React + TypeScript | latest |
+| Backend | FastAPI + SQLAlchemy + Pydantic | Python 3.12+ |
+| Worker | Python + Redis | Python 3.12+ |
+| Base de datos | PostgreSQL + pgvector | 15+ |
+| Object storage | MinIO (S3-compatible) | — |
+| Cache / Colas | Redis | 7+ |
+| Contenedores | Docker + Docker Compose | 24.0+ / 2.20+ |
+| Testing | pytest, Vitest, Testing Library | — |
+
+---
+
+## Licencia
+
+Proyecto privado. Todos los derechos reservados.

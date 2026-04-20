@@ -2,37 +2,58 @@
 
 ## Objetivo
 
-El workspace debe comportarse como un entorno de apoyo tecnico, no como un chat casual.
+El workspace se diseña como un **entorno de apoyo técnico estructurado**, no como una interfaz de chat casual. La disposición obliga tanto al usuario como al sistema a trabajar con contexto técnico explícito.
 
-## Layout actual
+---
 
-### Sidebar izquierdo
+## Layout
 
-- seleccion de robot
-- numero de ejes
-- configuracion IO
-- opciones de vision
-- perfil de aplicacion
+```text
+┌──────────────────┬───────────────────────────┬──────────────────┐
+│  SIDEBAR IZQ.    │     PANEL CENTRAL         │  SIDEBAR DER.    │
+│                  │                           │                  │
+│  Configuración   │  Prompt del usuario       │  Historial de    │
+│  del robot:      │                           │  consultas       │
+│                  │  Respuesta técnica        │                  │
+│  • Modelo        │                           │  Referencias a   │
+│  • Número ejes   │  Bloque de código PAC     │  manuales        │
+│  • Config. IO    │                           │                  │
+│  • Visión        │  [Copiar código]          │  Páginas citadas │
+│  • Perfil app    │                           │  Fragmentos RAG  │
+│                  │                           │                  │
+└──────────────────┴───────────────────────────┴──────────────────┘
+```
 
-### Panel central
+### Sidebar izquierdo — Configuración del robot
 
-- prompt del usuario
-- respuesta tecnica
-- bloque de codigo PAC
-- botones de copia
+| Campo | Descripción |
+|---|---|
+| Modelo de robot | Selección del tipo de robot DENSO |
+| Número de ejes | 4-axis, 6-axis |
+| Configuración IO | Entradas/salidas digitales y analógicas |
+| Opciones de visión | Soporte de visión habilitado/deshabilitado |
+| Perfil de aplicación | Contexto de uso (pick & place, ensamblaje, etc.) |
 
-### Sidebar derecho
+### Panel central — Conversación y código
 
-- historial de consultas
-- referencias a manuales
-- paginas citadas
-- fragmentos usados en retrieval
-- herramientas de apoyo
+- Campo de prompt del usuario
+- Respuesta técnica generada por el asistente
+- Bloque de código PAC con resaltado de sintaxis
+- Botones de copia rápida
+
+### Sidebar derecho — Referencias y contexto
+
+- Historial de consultas de la sesión
+- Referencias a manuales utilizados en la respuesta
+- Páginas y secciones citadas
+- Fragmentos recuperados por el pipeline RAG
+
+---
 
 ## Estado de implementación
 
-El layout ya está construido e integrado con rutas protegidas, pero el contenido técnico todavía usa varios datos de ejemplo mientras se conecta el backend real de chat, administración y RAG.
+El layout está construido e integrado con rutas protegidas. Los componentes de configuración del robot y los sidebars utilizan datos de ejemplo mientras se conecta el backend de chat, administración y RAG.
 
-## Justificacion
+## Justificación
 
-Esta composicion obliga al usuario y al sistema a trabajar con contexto tecnico explicito.
+Esta composición garantiza que cada consulta al asistente incluya el contexto técnico del robot configurado, evitando respuestas genéricas que no apliquen al hardware específico del usuario.

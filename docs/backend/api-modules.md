@@ -1,61 +1,82 @@
 # Módulos del Backend
 
-## Implementados hoy
+Detalle de los módulos de la API, organizados por estado de implementación.
+
+---
+
+## Módulos implementados
 
 ### `auth`
 
-Gestiona:
+Gestión completa del ciclo de autenticación:
 
-- login con correo y contraseña
-- sesión actual
-- cambio de rol
-- logout
-- firma y lectura de cookie de sesión
+| Endpoint | Método | Descripción |
+|---|---|---|
+| `/api/v1/auth/login` | `POST` | Inicio de sesión con correo y contraseña |
+| `/api/v1/auth/me` | `GET` | Información de la sesión actual |
+| `/api/v1/auth/switch-role` | `POST` | Cambio de rol activo (admin ↔ user) |
+| `/api/v1/auth/logout` | `POST` | Cierre de sesión |
+
+Implementa firma y lectura de cookies de sesión con JWT (HttpOnly, Secure en producción).
 
 ### `health`
 
-Healthcheck para diagnóstico y Docker.
+| Endpoint | Método | Descripción |
+|---|---|---|
+| `/api/v1/health/` | `GET` | Healthcheck para diagnóstico y orquestación Docker |
 
 ### `chat`
 
-Expone un contrato placeholder con:
+| Endpoint | Método | Descripción |
+|---|---|---|
+| `/api/v1/chat/generate` | `POST` | Generación de respuesta del asistente |
 
-- resumen
-- código PAC
-- referencias
+Actualmente expone un contrato placeholder que devuelve resumen, código PAC y referencias. Pendiente de integración con Gemini y retrieval.
 
 ### `admin`
 
-Expone un estado administrativo placeholder para sostener la UI y el contrato inicial.
+| Endpoint | Método | Descripción |
+|---|---|---|
+| `/api/v1/admin/status` | `GET` | Estado administrativo del sistema |
 
-## Implementados parcialmente
+Contrato inicial para sostener la consola administrativa del frontend.
+
+---
+
+## Módulos parciales
 
 ### `users`
 
-Existe el modelo `User` y la persistencia real para autenticación, pero todavía falta CRUD administrativo completo.
+El modelo `User` y la persistencia para autenticación están implementados. Pendiente: CRUD administrativo completo (creación, edición, desactivación de usuarios).
 
-## Pendientes planificados
+---
+
+## Módulos planificados
 
 ### `manuals`
 
-- carga de PDFs
-- versionado
-- metadatos por robot y controlador
+Gestión de la base documental:
+- Carga de PDFs a MinIO
+- Versionado de documentos
+- Metadatos por robot y versión del controlador
 
 ### `retrieval`
 
-- búsqueda vectorial en pgvector
-- filtros de aplicabilidad técnica
-- citación por página y sección
+Búsqueda y recuperación de contexto:
+- Consulta vectorial en pgvector
+- Filtrado por aplicabilidad técnica (tipo de robot, ejes, visión)
+- Citación por página y sección del manual original
 
 ### `settings`
 
-- parámetros de Gemini
-- prompts del sistema
-- políticas de respuesta
+Configuración administrativa del sistema:
+- Parámetros del modelo Gemini (temperatura, tokens, etc.)
+- Prompts del sistema
+- Políticas de respuesta
 
 ### `audit`
 
-- acciones administrativas
-- cambios de configuración
-- eventos de ingestión
+Registro de eventos del sistema:
+- Acciones administrativas
+- Cambios de configuración
+- Eventos de ingestión documental

@@ -38,6 +38,7 @@ describe("SessionProfile", () => {
 
     expect(await screen.findByText("soviedo@ucenfotec.ac.cr")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Administrador")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Perfil" })).toBeInTheDocument();
   });
 
   it("switches role and navigates to the matching page", async () => {
@@ -72,6 +73,18 @@ describe("SessionProfile", () => {
     await waitFor(() => {
       expect(logoutSession).toHaveBeenCalled();
       expect(pushMock).toHaveBeenCalledWith("/");
+    });
+  });
+
+  it("navigates to profile settings from the header", async () => {
+    const user = userEvent.setup();
+
+    render(<SessionProfile />);
+
+    await user.click(await screen.findByRole("button", { name: "Perfil" }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/profile");
     });
   });
 });
