@@ -36,7 +36,9 @@ def test_select_chunks_for_semantic_review_marks_suspicious_and_sampled() -> Non
     assert (1, "sampled") in reasons
 
 
-def test_is_manual_eligible_for_semantic_review_uses_language_and_title(monkeypatch) -> None:
+def test_is_manual_eligible_for_semantic_review_uses_language_and_title(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(
         "src.services.semantic_review.settings.semantic_review_enabled_languages",
         "es,en",
@@ -46,12 +48,16 @@ def test_is_manual_eligible_for_semantic_review_uses_language_and_title(monkeypa
         "programmer,operacion",
     )
 
-    assert is_manual_eligible_for_semantic_review(ManualStub("RC7 Programmer Manual", "en"))
+    assert is_manual_eligible_for_semantic_review(
+        ManualStub("RC7 Programmer Manual", "en")
+    )
     assert not is_manual_eligible_for_semantic_review(ManualStub("Guia general", "en"))
     assert not is_manual_eligible_for_semantic_review(ManualStub("Programmer", "fr"))
 
 
-def test_build_review_metrics_summary_aggregates_scores_actions_and_cost(monkeypatch) -> None:
+def test_build_review_metrics_summary_aggregates_scores_actions_and_cost(
+    monkeypatch,
+) -> None:
     monkeypatch.setattr(
         "src.services.semantic_review.settings.semantic_review_estimated_output_tokens",
         100,

@@ -4,6 +4,7 @@ import {
   deleteManual,
   fetchAdminStatus,
   fetchManuals,
+  fetchManualReviewSummaries,
   getManualOpenUrl,
   updateManual,
   uploadManual,
@@ -204,5 +205,66 @@ describe("manuals helpers", () => {
 
   it("builds open URL for a manual", () => {
     expect(getManualOpenUrl(5)).toBe("http://localhost:8000/api/v1/manuals/5/file");
+  });
+
+  it("loads and normalizes manual review summaries", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              manual_id: 3,
+              initial_chunk_count: 20,
+              final_chunk_count: 18,
+              reviewed_count: 8,
+              skipped_count: 2,
+              error_count: 0,
+              merge_actions: 1,
+              split_actions: 2,
+              keep_actions: 5,
+              regenerate_actions: 0,
+              applied_autofixes: 2,
+              avg_coherence_score: 0.81,
+              avg_completeness_score: 0.78,
+              avg_boundary_quality_score: 0.74,
+              estimated_input_tokens: 1200,
+              estimated_output_tokens: 320,
+              estimated_cost_usd: 0.0042,
+              updated_at: "2026-04-20T14:00:00Z",
+            },
+          ],
+          total: 1,
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      ),
+    );
+
+    await expect(fetchManualReviewSummaries()).resolves.toEqual({
+      3: {
+        manualId: 3,
+        initialChunkCount: 20,
+        finalChunkCount: 18,
+        reviewedCount: 8,
+        skippedCount: 2,
+        errorCount: 0,
+        mergeActions: 1,
+        splitActions: 2,
+        keepActions: 5,
+        regenerateActions: 0,
+        appliedAutofixes: 2,
+        avgCoherenceScore: 0.81,
+        avgCompletenessScore: 0.78,
+        avgBoundaryQualityScore: 0.74,
+        estimatedInputTokens: 1200,
+        estimatedOutputTokens: 320,
+        estimatedCostUsd: 0.0042,
+        updatedAt: "2026-04-20T14:00:00Z",
+      },
+    });
   });
 });

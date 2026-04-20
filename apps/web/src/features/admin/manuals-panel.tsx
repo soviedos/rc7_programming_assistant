@@ -18,12 +18,14 @@ import { cn } from "@/lib/utils";
 import {
   fetchAdminStatus,
   fetchManuals,
+  fetchManualReviewSummaries,
   getManualOpenUrl,
   deleteManual,
   updateManual,
   uploadManual,
   type AdminStatus,
   type ManualDocument,
+  type ManualReviewSummary,
 } from "@/lib/manuals";
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -64,6 +66,14 @@ function formatDate(value: string | null): string {
 function formatFileSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatUsd(value: number): string {
+  return new Intl.NumberFormat("es-CR", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 4,
+  }).format(value);
 }
 
 // ── Status Badge ────────────────────────────────────────────────────
@@ -524,6 +534,7 @@ function DeleteManualModal({
 export function ManualsPanel() {
   const [status, setStatus] = useState<AdminStatus | null>(null);
   const [manuals, setManuals] = useState<ManualDocument[]>([]);
+  const [reviewSummaries, setReviewSummaries] = useState<Record<number, ManualReviewSummary>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<FlashMessage>(null);
@@ -538,8 +549,10 @@ export function ManualsPanel() {
         fetchAdminStatus(),
         fetchManuals(),
       ]);
+      const nextReviewSummaries = await fetchManualReviewSummaries();
       setStatus(nextStatus);
       setManuals(nextManuals);
+      setReviewSummaries(nextReviewSummaries);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No fue posible cargar los datos.");
@@ -624,6 +637,9 @@ export function ManualsPanel() {
         ) : (
           <div className="space-y-2">
             {manuals.map((manual) => (
+              (() => {
+                const summary = reviewSummaries[manual.id];
+                return (
               <article
                 key={manual.id}
                 className="flex items-start gap-4 p-4 rounded-xl bg-surface border border-border hover:bg-surface-hover transition-colors"
@@ -644,6 +660,19 @@ export function ManualsPanel() {
                     {manual.chunkCount > 0 && <span>{manual.chunkCount} chunks</span>}
                     <span>{formatDate(manual.createdAt)}</span>
                   </div>
+                  {summary && (
+                    <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-soft">
+                      <span className="px-2 py-0.5 rounded-full bg-info/10 text-info">
+                        QA revisado: {summary.reviewedCount}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-success/10 text-success">
+                        Autofixes: {summary.appliedAutofixes}
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full bg-warning/10 text-warning">
+                        Costo: {formatUsd(summary.estimatedCostUsd)}
+                      </span>
+                    </div>
+                  )}
                   {manual.notes && (
                     <p className="text-xs text-muted mt-1.5 line-clamp-2">{manual.notes}</p>
                   )}
@@ -687,6 +716,8 @@ export function ManualsPanel() {
                   </button>
                 </div>
               </article>
+                );
+              })()
             ))}
           </div>
         )}

@@ -46,6 +46,27 @@ export type UpdateManualInput = {
   notes?: string;
 };
 
+export type ManualReviewSummary = {
+  manualId: number;
+  initialChunkCount: number;
+  finalChunkCount: number;
+  reviewedCount: number;
+  skippedCount: number;
+  errorCount: number;
+  mergeActions: number;
+  splitActions: number;
+  keepActions: number;
+  regenerateActions: number;
+  appliedAutofixes: number;
+  avgCoherenceScore: number | null;
+  avgCompletenessScore: number | null;
+  avgBoundaryQualityScore: number | null;
+  estimatedInputTokens: number;
+  estimatedOutputTokens: number;
+  estimatedCostUsd: number;
+  updatedAt: string;
+};
+
 // ── API response shapes ────────────────────────────────────────────
 
 type AdminStatusApiResponse = {
@@ -77,6 +98,32 @@ type ManualApiResponse = {
 
 type ManualListApiResponse = {
   items: ManualApiResponse[];
+  total: number;
+};
+
+type ManualReviewSummaryApiResponse = {
+  manual_id: number;
+  initial_chunk_count: number;
+  final_chunk_count: number;
+  reviewed_count: number;
+  skipped_count: number;
+  error_count: number;
+  merge_actions: number;
+  split_actions: number;
+  keep_actions: number;
+  regenerate_actions: number;
+  applied_autofixes: number;
+  avg_coherence_score: number | null;
+  avg_completeness_score: number | null;
+  avg_boundary_quality_score: number | null;
+  estimated_input_tokens: number;
+  estimated_output_tokens: number;
+  estimated_cost_usd: number;
+  updated_at: string;
+};
+
+type ManualReviewSummaryListApiResponse = {
+  items: ManualReviewSummaryApiResponse[];
   total: number;
 };
 
@@ -113,6 +160,31 @@ function normalizeManual(raw: ManualApiResponse): ManualDocument {
   };
 }
 
+function normalizeManualReviewSummary(
+  raw: ManualReviewSummaryApiResponse,
+): ManualReviewSummary {
+  return {
+    manualId: raw.manual_id,
+    initialChunkCount: raw.initial_chunk_count,
+    finalChunkCount: raw.final_chunk_count,
+    reviewedCount: raw.reviewed_count,
+    skippedCount: raw.skipped_count,
+    errorCount: raw.error_count,
+    mergeActions: raw.merge_actions,
+    splitActions: raw.split_actions,
+    keepActions: raw.keep_actions,
+    regenerateActions: raw.regenerate_actions,
+    appliedAutofixes: raw.applied_autofixes,
+    avgCoherenceScore: raw.avg_coherence_score,
+    avgCompletenessScore: raw.avg_completeness_score,
+    avgBoundaryQualityScore: raw.avg_boundary_quality_score,
+    estimatedInputTokens: raw.estimated_input_tokens,
+    estimatedOutputTokens: raw.estimated_output_tokens,
+    estimatedCostUsd: raw.estimated_cost_usd,
+    updatedAt: raw.updated_at,
+  };
+}
+
 // ── API calls ──────────────────────────────────────────────────────
 
 export async function fetchAdminStatus(): Promise<AdminStatus> {
@@ -129,6 +201,21 @@ export async function fetchManuals(): Promise<ManualDocument[]> {
     "No fue posible cargar la base documental.",
   );
   return raw.items.map(normalizeManual);
+}
+
+export async function fetchManualReviewSummaries(): Promise<
+  Record<number, ManualReviewSummary>
+> {
+  const raw = await api.get<ManualReviewSummaryListApiResponse>(
+    "/api/v1/manuals/review-summaries",
+    "No fue posible cargar el resumen de QA de manuales.",
+  );
+
+  return raw.items.reduce<Record<number, ManualReviewSummary>>((acc, item) => {
+    const normalized = normalizeManualReviewSummary(item);
+    acc[normalized.manualId] = normalized;
+    return acc;
+  }, {});
 }
 
 export async function uploadManual(

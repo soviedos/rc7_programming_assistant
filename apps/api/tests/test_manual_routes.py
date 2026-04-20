@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from src.api.v1.routes.manuals import get_manual_storage_service
-from src.db.models import Manual, User
+from src.db.models import Manual, ManualReviewSummary, User
 from src.services.auth.passwords import hash_password
 
 
@@ -296,3 +296,66 @@ def test_manual_update_open_and_delete_flow(
         assert db_session.get(Manual, manual_id) is None
     finally:
         client.app.dependency_overrides.pop(get_manual_storage_service, None)
+
+
+def test_manual_review_summaries_are_listed_for_admin(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    admin = create_user(
+        db_session,
+        email="admin@ucenfotec.ac.cr",
+        password="1234ABC",
+        roles=["admin", "user"],
+    )
+    login(client, "admin@ucenfotec.ac.cr", "1234ABC")
+
+    manual = Manual(
+        title="Manual QA",
+        original_filename="qa.pdf",
+        storage_key="manuals/2026/04/20/qa.pdf",
+        content_type="application/pdf",
+        size_bytes=120,
+        status="indexed",
+        chunk_count=3,
+        robot_model="VP-6242",
+        controller_version="RC7",
+        document_language="es",
+        notes=None,
+        uploaded_by_user_id=admin.id,
+        uploaded_by_email=admin.email,
+    )
+    db_session.add(manual)
+    db_session.commit()
+    db_session.refresh(manual)
+
+    summary = ManualReviewSummary(
+        manual_id=manual.id,
+        initial_chunk_count=4,
+        final_chunk_count=3,
+        reviewed_count=2,
+        skipped_count=1,
+        error_count=0,
+        merge_actions=1,
+        split_actions=0,
+        keep_actions=1,
+        regenerate_actions=0,
+        applied_autofixes=1,
+        avg_coherence_score=0.8,
+        avg_completeness_score=0.75,
+        avg_boundary_quality_score=0.7,
+        estimated_input_tokens=1000,
+        estimated_output_tokens=240,
+        estimated_cost_usd=0.0123,
+    )
+    db_session.add(summary)
+    db_session.commit()
+
+    response = client.get("/api/v1/manuals/review-summaries")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == 1
+    assert payload["items"][0]["manual_id"] == manual.id
+    assert payload["items"][0]["reviewed_count"] == 2
+    assert payload["items"][0]["estimated_cost_usd"] == 0.0123

@@ -10,10 +10,12 @@ from src.api.v1.deps import DbSession, get_current_admin_user
 from src.api.v1.schemas.manuals import (
     DocumentLanguage,
     ManualListResponse,
+    ManualReviewSummaryListResponse,
+    ManualReviewSummaryResponse,
     ManualResponse,
     ManualUpdateRequest,
 )
-from src.db.models import Manual, User
+from src.db.models import Manual, ManualReviewSummary, User
 from src.services.manuals import (
     ManualStorageError,
     ManualStorageService,
@@ -43,6 +45,31 @@ def get_manual_or_404(db_session: DbSession, manual_id: int) -> Manual:
     return manual
 
 
+def serialize_manual_review_summary(
+    summary: ManualReviewSummary,
+) -> ManualReviewSummaryResponse:
+    return ManualReviewSummaryResponse(
+        manual_id=summary.manual_id,
+        initial_chunk_count=summary.initial_chunk_count,
+        final_chunk_count=summary.final_chunk_count,
+        reviewed_count=summary.reviewed_count,
+        skipped_count=summary.skipped_count,
+        error_count=summary.error_count,
+        merge_actions=summary.merge_actions,
+        split_actions=summary.split_actions,
+        keep_actions=summary.keep_actions,
+        regenerate_actions=summary.regenerate_actions,
+        applied_autofixes=summary.applied_autofixes,
+        avg_coherence_score=summary.avg_coherence_score,
+        avg_completeness_score=summary.avg_completeness_score,
+        avg_boundary_quality_score=summary.avg_boundary_quality_score,
+        estimated_input_tokens=summary.estimated_input_tokens,
+        estimated_output_tokens=summary.estimated_output_tokens,
+        estimated_cost_usd=summary.estimated_cost_usd,
+        updated_at=summary.updated_at,
+    )
+
+
 @router.get("", response_model=ManualListResponse)
 async def list_manuals(
     db_session: DbSession,
@@ -55,6 +82,22 @@ async def list_manuals(
     )
     return ManualListResponse(
         items=[serialize_manual(manual) for manual in manuals], total=len(manuals)
+    )
+
+
+@router.get("/review-summaries", response_model=ManualReviewSummaryListResponse)
+async def list_manual_review_summaries(
+    db_session: DbSession,
+    _: User = Depends(get_current_admin_user),
+) -> ManualReviewSummaryListResponse:
+    summaries = list(
+        db_session.scalars(
+            select(ManualReviewSummary).order_by(ManualReviewSummary.updated_at.desc())
+        )
+    )
+    return ManualReviewSummaryListResponse(
+        items=[serialize_manual_review_summary(summary) for summary in summaries],
+        total=len(summaries),
     )
 
 

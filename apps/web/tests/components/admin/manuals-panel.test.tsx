@@ -7,6 +7,7 @@ import {
   deleteManual,
   fetchAdminStatus,
   fetchManuals,
+  fetchManualReviewSummaries,
   getManualOpenUrl,
   updateManual,
   uploadManual,
@@ -15,6 +16,7 @@ import {
 vi.mock("@/lib/manuals", () => ({
   fetchAdminStatus: vi.fn(),
   fetchManuals: vi.fn(),
+  fetchManualReviewSummaries: vi.fn(),
   uploadManual: vi.fn(),
   updateManual: vi.fn(),
   deleteManual: vi.fn(),
@@ -51,6 +53,28 @@ describe("ManualsPanel", () => {
         updatedAt: "2026-04-20T15:00:00Z",
       },
     ]);
+    vi.mocked(fetchManualReviewSummaries).mockResolvedValue({
+      1: {
+        manualId: 1,
+        initialChunkCount: 13,
+        finalChunkCount: 12,
+        reviewedCount: 7,
+        skippedCount: 1,
+        errorCount: 0,
+        mergeActions: 1,
+        splitActions: 1,
+        keepActions: 5,
+        regenerateActions: 0,
+        appliedAutofixes: 2,
+        avgCoherenceScore: 0.83,
+        avgCompletenessScore: 0.8,
+        avgBoundaryQualityScore: 0.75,
+        estimatedInputTokens: 1200,
+        estimatedOutputTokens: 240,
+        estimatedCostUsd: 0.0123,
+        updatedAt: "2026-04-20T15:00:00Z",
+      },
+    });
     vi.mocked(getManualOpenUrl).mockReturnValue("http://localhost:8000/api/v1/manuals/1/file");
     vi.spyOn(window, "open").mockImplementation(() => null);
   });
@@ -60,6 +84,7 @@ describe("ManualsPanel", () => {
 
     expect(await screen.findByText("RC7 Programmer Manual I")).toBeInTheDocument();
     expect(screen.getByText("Manuales")).toBeInTheDocument();
+    expect(screen.getByText(/QA revisado: 7/i)).toBeInTheDocument();
   });
 
   it("opens upload modal, adds multiple files and submits", async () => {
