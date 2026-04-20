@@ -1,8 +1,8 @@
 import { ProtectedRoute } from "@/features/auth";
 import { AppHeader } from "@/components/layout/app-header";
-import { AdminNav, ManualsPanel } from "@/features/admin";
+import { AdminNav, RolesPanel } from "@/features/admin";
 
-export default function AdminManualsPage() {
+export default function AdminRolesPage() {
   return (
     <ProtectedRoute allowedRoles={["admin"]}>
       <div className="flex flex-col h-screen bg-bg">
@@ -10,7 +10,7 @@ export default function AdminManualsPage() {
         <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
           <AdminNav />
           <main className="flex-1 flex flex-col overflow-hidden">
-            <ManualsPanel />
+            <RolesPanel />
           </main>
         </div>
       </div>

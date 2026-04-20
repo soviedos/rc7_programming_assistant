@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Backend FastAPI para RC7 Programming Assistant"
 requires-python = ">=3.12"
 dependencies = [
+  "email-validator>=2.2.0,<3.0.0",
   "fastapi[standard]>=0.116.0,<1.0.0",
   "minio>=7.2.18,<8.0.0",
   "pwdlib[argon2]>=0.2.1,<1.0.0",

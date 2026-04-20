@@ -2,9 +2,48 @@ from sqlalchemy import inspect, select, text
 
 from src.core.config import settings
 from src.db.base import Base
-from src.db.models import User
+from src.db.models import RolePermission, User
 from src.db.session import SessionLocal, engine
 from src.services.auth.passwords import hash_password
+
+
+DEFAULT_ROLE_PERMISSIONS = [
+    {
+        "key": "manuals",
+        "name": "Manuales",
+        "description": "Ver, subir y gestionar la base documental.",
+        "admin": True,
+        "user": False,
+    },
+    {
+        "key": "users",
+        "name": "Usuarios",
+        "description": "CRUD completo de cuentas y asignacion de rol.",
+        "admin": True,
+        "user": False,
+    },
+    {
+        "key": "chat",
+        "name": "Chat",
+        "description": "Usar el asistente para consultas tecnicas.",
+        "admin": True,
+        "user": True,
+    },
+    {
+        "key": "profile",
+        "name": "Perfil y configuracion",
+        "description": "Actualizar perfil, idioma y contrasena.",
+        "admin": True,
+        "user": True,
+    },
+    {
+        "key": "role-switch",
+        "name": "Cambio de rol",
+        "description": "Alternar entre vista admin y vista usuario cuando aplique.",
+        "admin": True,
+        "user": True,
+    },
+]
 
 
 def initialize_database() -> None:
@@ -12,6 +51,7 @@ def initialize_database() -> None:
     ensure_user_columns()
     ensure_manual_columns()
     seed_bootstrap_admin()
+    seed_role_permissions()
 
 
 def ensure_user_columns() -> None:
@@ -90,4 +130,27 @@ def seed_bootstrap_admin() -> None:
             is_active=True,
         )
         session.add(admin_user)
+        session.commit()
+
+
+def seed_role_permissions() -> None:
+    with SessionLocal() as session:
+        existing_keys = {
+            key for key in session.scalars(select(RolePermission.key)).all()
+        }
+
+        for permission in DEFAULT_ROLE_PERMISSIONS:
+            if permission["key"] in existing_keys:
+                continue
+
+            session.add(
+                RolePermission(
+                    key=permission["key"],
+                    name=permission["name"],
+                    description=permission["description"],
+                    admin=permission["admin"],
+                    user=permission["user"],
+                )
+            )
+
         session.commit()

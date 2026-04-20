@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fetchAdminStatus, fetchManuals, uploadManual } from "@/lib/manuals";
+import {
+  deleteManual,
+  fetchAdminStatus,
+  fetchManuals,
+  getManualOpenUrl,
+  updateManual,
+  uploadManual,
+} from "@/lib/manuals";
 
 describe("manuals helpers", () => {
   beforeEach(() => {
@@ -144,5 +151,58 @@ describe("manuals helpers", () => {
     expect(options?.method).toBe("POST");
     expect(options?.credentials).toBe("include");
     expect(options?.body).toBeInstanceOf(FormData);
+  });
+
+  it("updates manual metadata", async () => {
+    vi.mocked(fetch).mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 4,
+          title: "Alarm Codes Updated",
+          original_filename: "alarms.pdf",
+          storage_key: "manuals/2026/04/20/alarms.pdf",
+          content_type: "application/pdf",
+          size_bytes: 1024,
+          status: "pending",
+          chunk_count: 0,
+          robot_model: "RC7 Core",
+          controller_version: "RC7.2",
+          document_language: "en",
+          notes: "Nueva nota",
+          last_error: null,
+          uploaded_by_user_id: 1,
+          uploaded_by_email: "admin@ucenfotec.ac.cr",
+          indexed_at: null,
+          created_at: "2026-04-20T14:00:00Z",
+          updated_at: "2026-04-20T14:00:00Z",
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      ),
+    );
+
+    const updated = await updateManual(4, { title: "Alarm Codes Updated", notes: "Nueva nota" });
+
+    expect(updated.title).toBe("Alarm Codes Updated");
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [, options] = vi.mocked(fetch).mock.calls[0];
+    expect(options?.method).toBe("PUT");
+  });
+
+  it("deletes manual", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(deleteManual(8)).resolves.toBeUndefined();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [, options] = vi.mocked(fetch).mock.calls[0];
+    expect(options?.method).toBe("DELETE");
+  });
+
+  it("builds open URL for a manual", () => {
+    expect(getManualOpenUrl(5)).toBe("http://localhost:8000/api/v1/manuals/5/file");
   });
 });

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 ManualStatus = Literal["pending", "processing", "indexed", "failed"]
 DocumentLanguage = Literal["es", "en"]
@@ -33,3 +33,8 @@ class ManualResponse(BaseModel):
 class ManualListResponse(BaseModel):
     items: list[ManualResponse]
     total: int
+
+
+class ManualUpdateRequest(BaseModel):
+    title: str = Field(min_length=3, max_length=255)
+    notes: str | None = Field(default=None, max_length=1000)

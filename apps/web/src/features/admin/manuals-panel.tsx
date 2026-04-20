@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useState, type DragEvent } from "react";
 import {
   Upload,
   X,
@@ -10,14 +10,19 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  Pencil,
+  Trash2,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   fetchAdminStatus,
   fetchManuals,
+  getManualOpenUrl,
+  deleteManual,
+  updateManual,
   uploadManual,
   type AdminStatus,
-  type DocumentLanguage,
   type ManualDocument,
 } from "@/lib/manuals";
 
@@ -26,21 +31,14 @@ import {
 type FlashMessage = { kind: "success" | "error"; text: string } | null;
 
 type ManualFormState = {
+  id: string;
   title: string;
-  robotModel: string;
-  controllerVersion: string;
-  documentLanguage: DocumentLanguage;
-  notes: string;
-  file: File | null;
+  file: File;
 };
 
-const EMPTY_FORM: ManualFormState = {
-  title: "",
-  robotModel: "",
-  controllerVersion: "",
-  documentLanguage: "es",
-  notes: "",
-  file: null,
+type EditFormState = {
+  title: string;
+  notes: string;
 };
 
 const STATUS_CONFIG: Record<
@@ -83,32 +81,21 @@ function StatusBadge({ status }: { status: ManualDocument["status"] }) {
 
 // ── PDF metadata extraction ─────────────────────────────────────────
 
-function extractMetadataFromFile(file: File): Omit<ManualFormState, "file"> {
+function extractTitleFromFile(file: File): string {
   const stem = file.name.replace(/\.pdf$/i, "");
 
-  // Normalize underscores to spaces for pattern matching (keep dashes in model names)
-  const normalized = stem.replace(/_+/g, " ");
-
-  // Detect robot model (DENSO patterns: VP-6242, VS-060, etc.)
-  const robotMatch = normalized.match(/\b(VP-?\d{3,5}[A-Z]?|VS-?\d{2,4}[A-Z]?)\b/i);
-  const robotModel = robotMatch ? robotMatch[1].replace(/^(VP|VS)(\d)/i, "$1-$2").toUpperCase() : "";
-
-  // Detect controller version (RC7, RC7.2, RC8, etc.)
-  const ctrlMatch = normalized.match(/\b(RC-?\d+\.?\d*)\b/i);
-  const controllerVersion = ctrlMatch ? ctrlMatch[1].replace(/^RC(\d)/i, "RC$1").toUpperCase() : "";
-
-  // Detect language from filename keywords
-  const hasEnglish = /\b(guide|instruction|programming|operation|reference|user)\b/i.test(normalized);
-  const hasSpanish = /\b(guía|guia|instrucciones|programación|programacion|operación|operacion|usuario)\b/i.test(normalized);
-  const documentLanguage: DocumentLanguage = hasSpanish && !hasEnglish ? "es" : hasEnglish ? "en" : "es";
-
-  // Build a clean title from the filename
-  const title = stem
+  return stem
     .replace(/[-_]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
 
-  return { title, robotModel, controllerVersion, documentLanguage, notes: "" };
+function buildQueueItem(file: File): ManualFormState {
+  return {
+    id: `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    file,
+    title: extractTitleFromFile(file),
+  };
 }
 
 // ── Upload Modal ────────────────────────────────────────────────────
@@ -120,72 +107,89 @@ function UploadModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (message: string) => void;
 }) {
-  const [form, setForm] = useState<ManualFormState>(EMPTY_FORM);
+  const [items, setItems] = useState<ManualFormState[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<FlashMessage>(null);
-  const [fileKey, setFileKey] = useState(0);
+  const [fileKey, setFileKey] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
 
-  function updateField<K extends keyof ManualFormState>(key: K, value: ManualFormState[K]) {
-    setForm((f) => ({ ...f, [key]: value }));
+  function resetModal() {
+    setItems([]);
+    setMessage(null);
+    setFileKey((k) => k + 1);
   }
 
-  function acceptFile(file: File) {
-    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+  function handleAddFiles(fileList: FileList | File[]) {
+    const incoming = Array.from(fileList);
+    const pdfs = incoming.filter(
+      (file) => file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"),
+    );
+
+    if (pdfs.length === 0) {
       setMessage({ kind: "error", text: "Solo se permiten archivos PDF." });
       return;
     }
-    setMessage(null);
-    const meta = extractMetadataFromFile(file);
-    setForm({ ...meta, file });
+
+    if (pdfs.length < incoming.length) {
+      setMessage({ kind: "error", text: "Algunos archivos fueron omitidos por no ser PDF." });
+    } else {
+      setMessage(null);
+    }
+
+    setItems((prev) => [...prev, ...pdfs.map(buildQueueItem)]);
   }
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) acceptFile(file);
+    if (e.target.files?.length) {
+      handleAddFiles(e.target.files);
+      e.target.value = "";
+    }
   }
 
-  function handleDrop(e: React.DragEvent) {
+  function handleDrop(e: DragEvent) {
     e.preventDefault();
     setIsDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) acceptFile(file);
+    if (e.dataTransfer.files.length) {
+      handleAddFiles(e.dataTransfer.files);
+    }
   }
 
-  function handleRemoveFile() {
-    setForm(EMPTY_FORM);
-    setFileKey((k) => k + 1);
-    setMessage(null);
+  function handleRemoveItem(id: string) {
+    setItems((prev) => prev.filter((item) => item.id !== id));
   }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setMessage(null);
 
-    if (!form.file) {
-      setMessage({ kind: "error", text: "Selecciona un archivo PDF." });
+    if (!items.length) {
+      setMessage({ kind: "error", text: "Selecciona al menos un archivo PDF." });
       return;
     }
-    if (form.title.trim().length < 3) {
-      setMessage({ kind: "error", text: "El título debe tener al menos 3 caracteres." });
+
+    if (items.some((item) => item.title.trim().length < 3)) {
+      setMessage({ kind: "error", text: "Cada título debe tener al menos 3 caracteres." });
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await uploadManual({
-        title: form.title,
-        file: form.file,
-        robotModel: form.robotModel,
-        controllerVersion: form.controllerVersion,
-        documentLanguage: form.documentLanguage,
-        notes: form.notes,
-      });
-      setForm(EMPTY_FORM);
-      setFileKey((k) => k + 1);
-      onSuccess();
+      for (const item of items) {
+        await uploadManual({
+          title: item.title,
+          file: item.file,
+        });
+      }
+
+      const uploadedCount = items.length;
+      resetModal();
+      onSuccess(
+        uploadedCount === 1
+          ? "Manual cargado correctamente."
+          : `Se cargaron ${uploadedCount} manuales correctamente.`,
+      );
       onClose();
     } catch (err) {
       setMessage({
@@ -201,116 +205,82 @@ function UploadModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-bg-soft border border-border rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={() => {
+          resetModal();
+          onClose();
+        }}
+      />
+      <div className="relative bg-bg-soft border border-border rounded-2xl shadow-2xl w-full max-w-3xl mx-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-base font-semibold text-ink">Subir manual</h2>
-          <button onClick={onClose} className="p-1 rounded-md text-muted hover:text-ink hover:bg-surface-hover transition-colors">
+          <h2 className="text-base font-semibold text-ink">Subir manuales</h2>
+          <button
+            onClick={() => {
+              resetModal();
+              onClose();
+            }}
+            className="p-1 rounded-md text-muted hover:text-ink hover:bg-surface-hover transition-colors"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {/* ── Dropzone / file picker ── */}
-          {!form.file ? (
-            <label
-              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={handleDrop}
-              className={cn(
-                "flex flex-col items-center justify-center gap-2 py-10 rounded-xl border-2 border-dashed cursor-pointer transition-colors",
-                isDragging
-                  ? "border-accent bg-accent/5"
-                  : "border-border hover:border-accent/40 hover:bg-surface-hover",
-              )}
-            >
-              <Upload className="h-8 w-8 text-muted" />
-              <p className="text-sm text-muted">
-                Arrastra un PDF aquí o <span className="text-accent font-medium">selecciona un archivo</span>
-              </p>
-              <p className="text-[11px] text-soft">Los datos se extraen automáticamente del archivo</p>
-              <input
-                key={fileKey}
-                type="file"
-                accept="application/pdf,.pdf"
-                onChange={handleFileChange}
-                className="sr-only"
-              />
-            </label>
-          ) : (
-            <>
-              {/* ── Selected file indicator ── */}
-              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-surface border border-border">
-                <FileText className="h-5 w-5 text-info shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-ink font-medium truncate">{form.file.name}</p>
-                  <p className="text-[11px] text-soft">{formatFileSize(form.file.size)}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRemoveFile}
-                  className="p-1 rounded-md text-muted hover:text-ink hover:bg-surface-hover transition-colors"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
+          <label
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+            className={cn(
+              "flex flex-col items-center justify-center gap-2 py-8 rounded-xl border-2 border-dashed cursor-pointer transition-colors",
+              isDragging
+                ? "border-accent bg-accent/5"
+                : "border-border hover:border-accent/40 hover:bg-surface-hover",
+            )}
+          >
+            <Upload className="h-8 w-8 text-muted" />
+            <p className="text-sm text-muted text-center">
+              Arrastra uno o varios PDF aquí o {" "}
+              <span className="text-accent font-medium">selecciona archivos</span>
+            </p>
+            <p className="text-[11px] text-soft">Se cargan con el nombre del archivo y luego puedes editar en la lista</p>
+            <input
+              key={fileKey}
+              type="file"
+              accept="application/pdf,.pdf"
+              multiple
+              onChange={handleFileChange}
+              className="sr-only"
+            />
+          </label>
 
-              {/* ── Auto-populated fields ── */}
-              <p className="text-[11px] text-soft -mb-2">Datos extraídos — edita si es necesario</p>
-
-              <div>
-                <label className="block text-xs font-medium text-muted mb-1.5">Título del manual</label>
-                <input
-                  value={form.title}
-                  onChange={(e) => updateField("title", e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm text-ink placeholder:text-soft focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/40 transition-colors"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-muted mb-1.5">Modelo de robot</label>
-                  <input
-                    value={form.robotModel}
-                    onChange={(e) => updateField("robotModel", e.target.value)}
-                    placeholder="Ej. VP-6242"
-                    className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm text-ink placeholder:text-soft focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/40 transition-colors"
-                  />
+          {items.length > 0 && (
+            <div className="space-y-3">
+              <p className="text-[11px] text-soft">Archivos listos para subir</p>
+              {items.map((item) => (
+                <div key={item.id} className="p-3 rounded-lg bg-surface border border-border">
+                  <div className="flex items-center gap-3">
+                    <FileText className="h-5 w-5 text-info shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-ink font-medium truncate">{item.title || item.file.name}</p>
+                      <p className="text-[11px] text-soft truncate">{item.file.name}</p>
+                      <p className="text-[11px] text-soft">{formatFileSize(item.file.size)}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveItem(item.id)}
+                      className="p-1 rounded-md text-muted hover:text-ink hover:bg-surface-hover transition-colors"
+                      aria-label={`Eliminar ${item.file.name}`}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted mb-1.5">Controlador</label>
-                  <input
-                    value={form.controllerVersion}
-                    onChange={(e) => updateField("controllerVersion", e.target.value)}
-                    placeholder="Ej. RC7"
-                    className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm text-ink placeholder:text-soft focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/40 transition-colors"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-muted mb-1.5">Idioma</label>
-                  <select
-                    value={form.documentLanguage}
-                    onChange={(e) => updateField("documentLanguage", e.target.value as DocumentLanguage)}
-                    className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm text-ink cursor-pointer focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/40 transition-colors"
-                  >
-                    <option value="es">Español</option>
-                    <option value="en">Inglés</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted mb-1.5">Notas (opcional)</label>
-                  <input
-                    value={form.notes}
-                    onChange={(e) => updateField("notes", e.target.value)}
-                    placeholder="Contexto adicional"
-                    className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm text-ink placeholder:text-soft focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/40 transition-colors"
-                  />
-                </div>
-              </div>
-            </>
+              ))}
+            </div>
           )}
 
           {message && (
@@ -325,6 +295,133 @@ function UploadModal({
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
+              onClick={() => {
+                resetModal();
+                onClose();
+              }}
+              className="px-4 py-2 rounded-lg text-sm text-muted hover:text-ink hover:bg-surface-hover transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting || !items.length}
+              className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+            >
+              {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              {isSubmitting ? "Cargando…" : "Subir manuales"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EditManualModal({
+  manual,
+  isOpen,
+  onClose,
+  onSuccess,
+}: {
+  manual: ManualDocument | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: (message: string) => void;
+}) {
+  const [form, setForm] = useState<EditFormState>({ title: "", notes: "" });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [message, setMessage] = useState<FlashMessage>(null);
+
+  useEffect(() => {
+    if (manual) {
+      setForm({ title: manual.title, notes: manual.notes ?? "" });
+      setMessage(null);
+      setIsSubmitting(false);
+    }
+  }, [manual]);
+
+  if (!isOpen || !manual) return null;
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setMessage(null);
+    const currentManual = manual;
+    if (!currentManual) return;
+
+    if (form.title.trim().length < 3) {
+      setMessage({ kind: "error", text: "El nombre debe tener al menos 3 caracteres." });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await updateManual(currentManual.id, {
+        title: form.title,
+        notes: form.notes,
+      });
+      onSuccess("Manual actualizado correctamente.");
+      onClose();
+    } catch (err) {
+      setMessage({
+        kind: "error",
+        text: err instanceof Error ? err.message : "No fue posible actualizar el manual.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-bg-soft border border-border rounded-2xl shadow-2xl w-full max-w-lg mx-4">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 className="text-base font-semibold text-ink">Editar manual</h2>
+          <button onClick={onClose} className="p-1 rounded-md text-muted hover:text-ink hover:bg-surface-hover transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <div>
+            <label htmlFor="edit-manual-title" className="block text-xs font-medium text-muted mb-1.5">
+              Nombre del manual
+            </label>
+            <input
+              id="edit-manual-title"
+              value={form.title}
+              onChange={(e) => setForm((prev) => ({ ...prev, title: e.target.value }))}
+              className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm text-ink placeholder:text-soft focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/40 transition-colors"
+            />
+          </div>
+          <div>
+            <label htmlFor="edit-manual-notes" className="block text-xs font-medium text-muted mb-1.5">
+              Notas
+            </label>
+            <textarea
+              id="edit-manual-notes"
+              value={form.notes}
+              onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+              rows={4}
+              placeholder="Agrega notas adicionales"
+              className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm text-ink placeholder:text-soft focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/40 transition-colors"
+            />
+          </div>
+
+          {message && (
+            <p
+              className={cn(
+                "text-xs px-3 py-2 rounded-lg",
+                message.kind === "error" ? "bg-danger/10 text-danger" : "bg-success/10 text-success",
+              )}
+            >
+              {message.text}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
               onClick={onClose}
               className="px-4 py-2 rounded-lg text-sm text-muted hover:text-ink hover:bg-surface-hover transition-colors"
             >
@@ -332,14 +429,91 @@ function UploadModal({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !form.file}
-              className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+              disabled={isSubmitting}
+              className="px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {isSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {isSubmitting ? "Cargando…" : "Subir manual"}
+              {isSubmitting ? "Guardando…" : "Guardar"}
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function DeleteManualModal({
+  manual,
+  isOpen,
+  onClose,
+  onSuccess,
+}: {
+  manual: ManualDocument | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: (message: string) => void;
+}) {
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [message, setMessage] = useState<FlashMessage>(null);
+
+  if (!isOpen || !manual) return null;
+
+  async function handleDelete() {
+    setMessage(null);
+    const currentManual = manual;
+    if (!currentManual) return;
+    setIsDeleting(true);
+    try {
+      await deleteManual(currentManual.id);
+      onSuccess("Manual eliminado correctamente.");
+      onClose();
+    } catch (err) {
+      setMessage({
+        kind: "error",
+        text: err instanceof Error ? err.message : "No fue posible eliminar el manual.",
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-bg-soft border border-border rounded-2xl shadow-2xl w-full max-w-md mx-4">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 className="text-base font-semibold text-ink">Eliminar manual</h2>
+          <button onClick={onClose} className="p-1 rounded-md text-muted hover:text-ink hover:bg-surface-hover transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-muted">
+            Vas a eliminar <span className="text-ink font-medium">{manual.title}</span>. Esta acción no se puede deshacer.
+          </p>
+
+          {message && (
+            <p className="text-xs px-3 py-2 rounded-lg bg-danger/10 text-danger">{message.text}</p>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg text-sm text-muted hover:text-ink hover:bg-surface-hover transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="px-4 py-2 rounded-lg bg-danger text-white text-sm font-medium hover:bg-danger/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isDeleting ? "Eliminando…" : "Eliminar"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -352,7 +526,11 @@ export function ManualsPanel() {
   const [manuals, setManuals] = useState<ManualDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<FlashMessage>(null);
   const [showUpload, setShowUpload] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+  const [selectedManual, setSelectedManual] = useState<ManualDocument | null>(null);
 
   async function loadData() {
     try {
@@ -368,6 +546,11 @@ export function ManualsPanel() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function handleSuccess(nextMessage: string) {
+    setMessage({ kind: "success", text: nextMessage });
+    await loadData();
   }
 
   useEffect(() => {
@@ -419,6 +602,10 @@ export function ManualsPanel() {
 
       {/* Content */}
       <div className="p-6">
+        {message && (
+          <p className="mb-4 text-xs px-3 py-2 rounded-lg bg-success/10 text-success">{message.text}</p>
+        )}
+
         {isLoading ? (
           <div className="flex items-center justify-center py-16 text-muted">
             <Loader2 className="h-5 w-5 animate-spin mr-2" />
@@ -457,9 +644,47 @@ export function ManualsPanel() {
                     {manual.chunkCount > 0 && <span>{manual.chunkCount} chunks</span>}
                     <span>{formatDate(manual.createdAt)}</span>
                   </div>
+                  {manual.notes && (
+                    <p className="text-xs text-muted mt-1.5 line-clamp-2">{manual.notes}</p>
+                  )}
                   {manual.lastError && (
                     <p className="text-[11px] text-danger mt-1.5">{manual.lastError}</p>
                   )}
+                </div>
+                <div className="shrink-0 flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => window.open(getManualOpenUrl(manual.id), "_blank", "noopener,noreferrer")}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs text-muted hover:text-ink hover:bg-surface-hover transition-colors"
+                    aria-label={`Abrir ${manual.title}`}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Abrir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedManual(manual);
+                      setShowEdit(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs text-muted hover:text-ink hover:bg-surface-hover transition-colors"
+                    aria-label={`Editar ${manual.title}`}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedManual(manual);
+                      setShowDelete(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs text-danger hover:bg-danger/10 transition-colors"
+                    aria-label={`Eliminar ${manual.title}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Eliminar
+                  </button>
                 </div>
               </article>
             ))}
@@ -470,7 +695,25 @@ export function ManualsPanel() {
       <UploadModal
         isOpen={showUpload}
         onClose={() => setShowUpload(false)}
-        onSuccess={loadData}
+        onSuccess={handleSuccess}
+      />
+      <EditManualModal
+        isOpen={showEdit}
+        manual={selectedManual}
+        onClose={() => {
+          setShowEdit(false);
+          setSelectedManual(null);
+        }}
+        onSuccess={handleSuccess}
+      />
+      <DeleteManualModal
+        isOpen={showDelete}
+        manual={selectedManual}
+        onClose={() => {
+          setShowDelete(false);
+          setSelectedManual(null);
+        }}
+        onSuccess={handleSuccess}
       />
     </div>
   );

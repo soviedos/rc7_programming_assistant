@@ -141,6 +141,11 @@ export const api = {
       body: JSON.stringify(body),
     }, fallback),
 
+  deleteVoid: (path: string, fallback?: string) =>
+    requestVoid(path, {
+      method: "DELETE",
+    }, fallback),
+
   postFormData: <T>(path: string, formData: FormData, fallback?: string) =>
     requestWithFormData<T>(path, formData, fallback),
 };

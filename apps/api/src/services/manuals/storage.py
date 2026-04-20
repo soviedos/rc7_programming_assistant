@@ -39,7 +39,9 @@ class ManualStorageService:
                 "No fue posible validar el bucket de manuales en MinIO."
             ) from exc
 
-    def upload_manual(self, content: bytes, storage_key: str, content_type: str) -> None:
+    def upload_manual(
+        self, content: bytes, storage_key: str, content_type: str
+    ) -> None:
         self.ensure_bucket()
 
         try:
@@ -51,7 +53,34 @@ class ManualStorageService:
                 content_type=content_type,
             )
         except MinioException as exc:
-            raise ManualStorageError("No fue posible almacenar el manual en MinIO.") from exc
+            raise ManualStorageError(
+                "No fue posible almacenar el manual en MinIO."
+            ) from exc
+
+    def download_manual(self, storage_key: str) -> bytes:
+        self.ensure_bucket()
+
+        try:
+            response = self.client.get_object(self.bucket_name, storage_key)
+            try:
+                return response.read()
+            finally:
+                response.close()
+                response.release_conn()
+        except MinioException as exc:
+            raise ManualStorageError(
+                "No fue posible descargar el manual desde MinIO."
+            ) from exc
+
+    def delete_manual(self, storage_key: str) -> None:
+        self.ensure_bucket()
+
+        try:
+            self.client.remove_object(self.bucket_name, storage_key)
+        except MinioException as exc:
+            raise ManualStorageError(
+                "No fue posible eliminar el manual en MinIO."
+            ) from exc
 
 
 def get_manual_storage_service() -> ManualStorageService:

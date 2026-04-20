@@ -41,6 +41,11 @@ export type UploadManualInput = {
   notes?: string;
 };
 
+export type UpdateManualInput = {
+  title: string;
+  notes?: string;
+};
+
 // ── API response shapes ────────────────────────────────────────────
 
 type AdminStatusApiResponse = {
@@ -150,4 +155,31 @@ export async function uploadManual(
     "No fue posible cargar el manual.",
   );
   return normalizeManual(raw);
+}
+
+export async function updateManual(
+  manualId: number,
+  input: UpdateManualInput,
+): Promise<ManualDocument> {
+  const raw = await api.put<ManualApiResponse>(
+    `/api/v1/manuals/${manualId}`,
+    {
+      title: input.title.trim(),
+      notes: input.notes?.trim() || null,
+    },
+    "No fue posible actualizar el manual.",
+  );
+  return normalizeManual(raw);
+}
+
+export async function deleteManual(manualId: number): Promise<void> {
+  await api.deleteVoid(
+    `/api/v1/manuals/${manualId}`,
+    "No fue posible eliminar el manual.",
+  );
+}
+
+export function getManualOpenUrl(manualId: number): string {
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+  return `${baseUrl}/api/v1/manuals/${manualId}/file`;
 }
