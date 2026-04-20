@@ -13,6 +13,13 @@ class Settings(BaseSettings):
     minio_root_password: str = "minioadmin"
     minio_bucket_manuals: str = "rc7-manuals"
     worker_poll_interval_seconds: int = 5
+    gemini_api_key: str = "replace_me"
+    gemini_model: str = "gemini-2.0-flash"
+    gemini_timeout_seconds: int = 8
+    semantic_review_enabled: bool = True
+    semantic_review_sample_rate: float = 0.1
+    semantic_review_min_chars: int = 250
+    semantic_review_max_chars: int = 2200
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -2,8 +2,9 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.db.models import Manual, ManualChunk
+from src.db.models import Manual, ManualChunk, ManualChunkReview
 from src.jobs.ingestion import process_next_pending_manual, run_worker_loop
+from src.services.semantic_review import ChunkReviewResult
 
 
 class FakeStorageService:
@@ -14,6 +15,26 @@ class FakeStorageService:
     def download_manual(self, storage_key: str) -> bytes:
         self.keys.append(storage_key)
         return self.content
+
+
+class FakeSemanticReviewer:
+    model = "fake-reviewer"
+
+    def review_chunk(
+        self, manual: Manual, chunk_index: int, chunk
+    ) -> ChunkReviewResult:  # type: ignore[no-untyped-def]
+        return ChunkReviewResult(
+            chunk_index=chunk_index,
+            page_number=chunk.page_number,
+            review_status="reviewed",
+            action="keep",
+            reviewer_model=self.model,
+            coherence_score=0.9,
+            completeness_score=0.9,
+            boundary_quality_score=0.9,
+            reason=f"ok-{manual.id}-{chunk_index}",
+            raw_response='{"action":"keep"}',
+        )
 
 
 def create_manual(db_session: Session, *, status: str = "pending") -> Manual:
@@ -53,7 +74,11 @@ def test_process_next_pending_manual_indexes_chunks(
         lambda content: ["MOVE P, HOME\n\nWAIT SIG(1)", "CALL PICK_PART"],
     )
 
-    processed = process_next_pending_manual(session_factory, storage)
+    processed = process_next_pending_manual(
+        session_factory,
+        storage,
+        semantic_reviewer=FakeSemanticReviewer(),
+    )
 
     assert processed is True
     assert storage.keys == ["manuals/2026/04/20/manual.pdf"]
@@ -79,6 +104,23 @@ def test_process_next_pending_manual_indexes_chunks(
         assert chunks[1].page_number == 2
         assert chunks[1].text == "CALL PICK_PART"
 
+        reviews = list(
+            session.scalars(
+                select(ManualChunkReview)
+                .where(ManualChunkReview.manual_id == manual.id)
+                .order_by(ManualChunkReview.chunk_index.asc())
+            )
+        )
+        assert len(reviews) == 2
+        assert reviews[0].review_status == "reviewed"
+        assert reviews[0].selected_reason in {
+            "sampled",
+            "suspicious_boundary",
+            "too_short",
+            "too_long",
+        }
+        assert reviews[0].reviewer_model == "fake-reviewer"
+
 
 def test_process_next_pending_manual_marks_failure_when_no_text_is_extracted(
     session_factory,
@@ -87,7 +129,9 @@ def test_process_next_pending_manual_marks_failure_when_no_text_is_extracted(
 ) -> None:
     manual = create_manual(db_session)
 
-    monkeypatch.setattr("src.jobs.ingestion.extract_pdf_text_by_page", lambda content: ["   ", ""])
+    monkeypatch.setattr(
+        "src.jobs.ingestion.extract_pdf_text_by_page", lambda content: ["   ", ""]
+    )
 
     processed = process_next_pending_manual(session_factory, FakeStorageService())
 
@@ -100,7 +144,12 @@ def test_process_next_pending_manual_marks_failure_when_no_text_is_extracted(
         assert refreshed_manual.chunk_count == 0
         assert refreshed_manual.indexed_at is None
         assert refreshed_manual.last_error == "No se pudo extraer texto util del PDF."
-        assert session.scalar(select(ManualChunk).where(ManualChunk.manual_id == manual.id)) is None
+        assert (
+            session.scalar(
+                select(ManualChunk).where(ManualChunk.manual_id == manual.id)
+            )
+            is None
+        )
 
 
 def test_run_worker_loop_emits_startup_and_heartbeat_when_idle(monkeypatch) -> None:
@@ -116,12 +165,16 @@ def test_run_worker_loop_emits_startup_and_heartbeat_when_idle(monkeypatch) -> N
             raise RuntimeError("stop-loop")
 
     monkeypatch.setattr("src.jobs.ingestion.initialize_database", lambda: None)
-    monkeypatch.setattr("src.jobs.ingestion.process_next_pending_manual", lambda *args, **kwargs: False)
+    monkeypatch.setattr(
+        "src.jobs.ingestion.process_next_pending_manual", lambda *args, **kwargs: False
+    )
     monkeypatch.setattr("src.jobs.ingestion.log", fake_log)
     monkeypatch.setattr("src.jobs.ingestion.sleep", fake_sleep)
 
     with pytest.raises(RuntimeError, match="stop-loop"):
-        run_worker_loop(session_factory=None, storage_service=None, poll_interval_seconds=1)  # type: ignore[arg-type]
+        run_worker_loop(
+            session_factory=None, storage_service=None, poll_interval_seconds=1
+        )  # type: ignore[arg-type]
 
     assert log_messages == [
         ("worker", "Worker RC7 iniciado. Esperando trabajos de ingesta..."),
