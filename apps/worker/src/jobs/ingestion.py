@@ -21,6 +21,99 @@ from src.services.storage import ManualStorageService, get_manual_storage_servic
 from src.utils.logging import log
 
 
+def _append_reason(reason: str | None, suffix: str) -> str:
+    base = (reason or "").strip()
+    return f"{base} {suffix}".strip() if base else suffix
+
+
+def _split_text_for_autofix(text: str) -> tuple[str, str] | None:
+    if len(text) < 2:
+        return None
+
+    midpoint = len(text) // 2
+    split_index = text.rfind("\n\n", 0, midpoint + 1)
+    separator_len = 2
+
+    if split_index == -1:
+        split_index = text.rfind(". ", 0, midpoint + 1)
+        separator_len = 2
+
+    if split_index == -1:
+        split_index = midpoint
+        separator_len = 0
+
+    left = text[:split_index].strip()
+    right = text[split_index + separator_len :].strip()
+    if not left or not right:
+        return None
+    return left, right
+
+
+def apply_safe_chunk_autofixes(
+    chunks: list[TextChunk],
+    review_results: list[ChunkReviewResult],
+) -> tuple[list[TextChunk], int]:
+    if not settings.semantic_review_autofix_enabled:
+        return chunks, 0
+
+    review_by_index = {result.chunk_index: result for result in review_results}
+    fixed_chunks: list[TextChunk] = []
+    applied_count = 0
+
+    index = 0
+    while index < len(chunks):
+        chunk = chunks[index]
+        review = review_by_index.get(index)
+
+        if (
+            review
+            and review.action == "merge_with_next"
+            and index + 1 < len(chunks)
+            and chunk.page_number == chunks[index + 1].page_number
+            and (review.boundary_quality_score is not None)
+            and review.boundary_quality_score
+            <= settings.semantic_review_merge_boundary_max
+        ):
+            merged_text = (
+                f"{chunk.text.rstrip()}\n\n{chunks[index + 1].text.lstrip()}".strip()
+            )
+            fixed_chunks.append(
+                TextChunk(page_number=chunk.page_number, text=merged_text)
+            )
+            review.reason = _append_reason(
+                review.reason, "Auto-fix aplicado: merge_with_next."
+            )
+            applied_count += 1
+            index += 2
+            continue
+
+        if (
+            review
+            and review.action == "split"
+            and len(chunk.text) >= settings.semantic_review_split_min_chars
+            and (review.coherence_score is not None)
+            and review.coherence_score <= settings.semantic_review_split_max_coherence
+        ):
+            split_pair = _split_text_for_autofix(chunk.text)
+            if split_pair:
+                left, right = split_pair
+                fixed_chunks.append(TextChunk(page_number=chunk.page_number, text=left))
+                fixed_chunks.append(
+                    TextChunk(page_number=chunk.page_number, text=right)
+                )
+                review.reason = _append_reason(
+                    review.reason, "Auto-fix aplicado: split."
+                )
+                applied_count += 1
+                index += 1
+                continue
+
+        fixed_chunks.append(chunk)
+        index += 1
+
+    return fixed_chunks, applied_count
+
+
 def claim_next_pending_manual(session: Session) -> Manual | None:
     statement = (
         select(Manual)
@@ -172,12 +265,16 @@ def process_next_pending_manual(
                 raise ValueError("No se pudo extraer texto util del PDF.")
 
             review_results = build_chunk_review_observations(manual, chunks, reviewer)
-            index_manual_chunks(session, manual, chunks, review_results)
+            fixed_chunks, applied_autofixes = apply_safe_chunk_autofixes(
+                chunks, review_results
+            )
+            index_manual_chunks(session, manual, fixed_chunks, review_results)
             log(
                 "worker",
                 (
-                    f"Manual #{manual.id} indexado correctamente con {len(chunks)} chunks "
-                    f"y {len(review_results)} revisiones semanticas."
+                    f"Manual #{manual.id} indexado con {len(fixed_chunks)} chunks, "
+                    f"{len(review_results)} revisiones semanticas y "
+                    f"{applied_autofixes} auto-fixes."
                 ),
             )
             return True

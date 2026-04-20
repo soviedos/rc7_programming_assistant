@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     semantic_review_sample_rate: float = 0.1
     semantic_review_min_chars: int = 250
     semantic_review_max_chars: int = 2200
+    semantic_review_autofix_enabled: bool = True
+    semantic_review_merge_boundary_max: float = 0.6
+    semantic_review_split_max_coherence: float = 0.65
+    semantic_review_split_min_chars: int = 1800
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -3,7 +3,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.db.models import Manual, ManualChunk, ManualChunkReview
-from src.jobs.ingestion import process_next_pending_manual, run_worker_loop
+from src.chunking.text import TextChunk
+from src.jobs.ingestion import (
+    apply_safe_chunk_autofixes,
+    process_next_pending_manual,
+    run_worker_loop,
+)
 from src.services.semantic_review import ChunkReviewResult
 
 
@@ -33,6 +38,29 @@ class FakeSemanticReviewer:
             completeness_score=0.9,
             boundary_quality_score=0.9,
             reason=f"ok-{manual.id}-{chunk_index}",
+            raw_response='{"action":"keep"}',
+        )
+
+
+class ActionSemanticReviewer:
+    model = "action-reviewer"
+
+    def __init__(self, actions: dict[int, str]) -> None:
+        self.actions = actions
+
+    def review_chunk(
+        self, manual: Manual, chunk_index: int, chunk
+    ) -> ChunkReviewResult:  # type: ignore[no-untyped-def]
+        return ChunkReviewResult(
+            chunk_index=chunk_index,
+            page_number=chunk.page_number,
+            review_status="reviewed",
+            action=self.actions.get(chunk_index, "keep"),
+            reviewer_model=self.model,
+            coherence_score=0.5,
+            completeness_score=0.9,
+            boundary_quality_score=0.4,
+            reason=f"review-{manual.id}-{chunk_index}",
             raw_response='{"action":"keep"}',
         )
 
@@ -179,3 +207,71 @@ def test_run_worker_loop_emits_startup_and_heartbeat_when_idle(monkeypatch) -> N
     assert log_messages == [
         ("worker", "Worker RC7 iniciado. Esperando trabajos de ingesta..."),
     ]
+
+
+def test_apply_safe_chunk_autofixes_merges_adjacent_chunks(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_autofix_enabled", True
+    )
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_merge_boundary_max", 0.6
+    )
+
+    chunks = [
+        TextChunk(page_number=1, text="Linea 1:"),
+        TextChunk(page_number=1, text="continuacion del contenido"),
+    ]
+    reviews = [
+        ChunkReviewResult(
+            chunk_index=0,
+            page_number=1,
+            review_status="reviewed",
+            action="merge_with_next",
+            boundary_quality_score=0.4,
+            reason="corte detectado",
+        )
+    ]
+
+    fixed_chunks, applied_count = apply_safe_chunk_autofixes(chunks, reviews)
+
+    assert applied_count == 1
+    assert len(fixed_chunks) == 1
+    assert "Linea 1:" in fixed_chunks[0].text
+    assert "continuacion del contenido" in fixed_chunks[0].text
+    assert "Auto-fix aplicado: merge_with_next." in (reviews[0].reason or "")
+
+
+def test_apply_safe_chunk_autofixes_splits_long_chunk(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_autofix_enabled", True
+    )
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_split_min_chars", 20
+    )
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_split_max_coherence", 0.65
+    )
+
+    chunk_text = (
+        "Primer bloque tecnico con datos relevantes. "
+        "Segundo bloque tecnico separado para simulacion de split."
+    )
+    chunks = [TextChunk(page_number=2, text=chunk_text)]
+    reviews = [
+        ChunkReviewResult(
+            chunk_index=0,
+            page_number=2,
+            review_status="reviewed",
+            action="split",
+            coherence_score=0.5,
+            reason="chunk muy denso",
+        )
+    ]
+
+    fixed_chunks, applied_count = apply_safe_chunk_autofixes(chunks, reviews)
+
+    assert applied_count == 1
+    assert len(fixed_chunks) == 2
+    assert fixed_chunks[0].text
+    assert fixed_chunks[1].text
+    assert "Auto-fix aplicado: split." in (reviews[0].reason or "")
