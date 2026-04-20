@@ -28,7 +28,7 @@ Resumen de las tecnologías seleccionadas para el proyecto y la justificación d
 |---|---|
 | **Aislamiento** | Proceso separado para parsing y chunking pesado, sin bloquear requests HTTP |
 | **Reindexación** | Capacidad de reprocesar documentos completos sin afectar la API |
-| **Coordinación** | Comunicación con el backend a través de Redis como broker de tareas |
+| **Coordinación** | Polling directo a PostgreSQL para reclamar manuales pendientes. Redis previsto como broker en iteraciones futuras |
 
 ## Base de datos — PostgreSQL + pgvector
 

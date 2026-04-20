@@ -13,32 +13,28 @@ rc7_programming_assistant/
 ├── apps/
 │   ├── api/                    # Backend FastAPI
 │   │   ├── src/
-│   │   │   ├── api/v1/         # Endpoints versionados (routes, schemas)
-│   │   │   ├── core/           # Configuración, seguridad, dependencias base
-│   │   │   ├── db/             # Migraciones, seeds, sesión de base de datos
-│   │   │   ├── models/         # Modelos de dominio y persistencia
-│   │   │   ├── repositories/   # Capa de acceso a datos
-│   │   │   ├── services/       # Lógica de negocio por dominio
-│   │   │   ├── tasks/          # Tareas asincrónicas
-│   │   │   └── workers/        # Procesos de fondo iniciados desde la API
+│   │   │   ├── api/v1/         # Endpoints versionados (routes, schemas, deps)
+│   │   │   ├── core/           # Configuración y variables de entorno
+│   │   │   ├── db/             # Sesión SQLAlchemy, modelos ORM e inicialización
+│   │   │   └── services/       # Lógica de negocio por dominio (auth, chat, manuals)
 │   │   └── tests/              # Pruebas del backend
 │   ├── web/                    # Frontend Next.js
-│   │   └── src/
-│   │       ├── app/            # Rutas y layouts (App Router)
-│   │       ├── components/     # Componentes reutilizables
-│   │       ├── features/       # Módulos funcionales por dominio
-│   │       ├── lib/            # Clientes HTTP y utilidades
-│   │       ├── styles/         # Estilos globales
-│   │       └── types/          # Tipos TypeScript compartidos
+│   │   ├── src/
+│   │   │   ├── app/            # Rutas y layouts (App Router)
+│   │   │   ├── components/     # Componentes compartidos (layout, shared)
+│   │   │   ├── features/       # Módulos funcionales (auth, chat, admin, settings)
+│   │   │   ├── lib/            # Clientes HTTP y utilidades
+│   │   │   └── styles/         # Tokens de diseño y estilos base
+│   │   └── tests/              # Pruebas del frontend
 │   └── worker/                 # Worker de ingestión documental
 │       ├── src/
+│       │   ├── core/           # Configuración del worker
+│       │   ├── db/             # Sesión y modelos persistentes del pipeline
 │       │   ├── jobs/           # Definición de trabajos ejecutables
 │       │   ├── parsers/        # Extracción de texto desde PDFs
 │       │   ├── chunking/       # Segmentación para retrieval
-│       │   ├── classifiers/    # Detección de aplicabilidad técnica
-│       │   ├── embeddings/     # Generación de vectores
-│       │   ├── indexing/       # Carga en PostgreSQL + pgvector
-│       │   └── utils/          # Utilidades del pipeline
+│       │   ├── services/       # Integraciones externas (MinIO)
+│       │   └── utils/          # Utilidades del pipeline (logging)
 │       └── tests/              # Pruebas del worker
 ├── docs/                       # Documentación técnica
 │   ├── architecture/           # Arquitectura y diseño
@@ -69,19 +65,15 @@ Los endpoints se agrupan bajo un prefijo versionado (`/api/v1/`) para permitir l
 
 ### Servicios de negocio — `apps/api/src/services/`
 
-La lógica de negocio se aísla en servicios por dominio (`auth`, `chat`, `users`, `retrieval`, etc.), manteniendo los endpoints como adaptadores delgados.
-
-### Repositorios — `apps/api/src/repositories/`
-
-El acceso a datos se encapsula en repositorios, desacoplando el dominio de los detalles de persistencia.
+La lógica de negocio se aísla en servicios por dominio (`auth`, `chat`, `manuals`), manteniendo los endpoints como adaptadores delgados.
 
 ### Módulos funcionales del frontend — `apps/web/src/features/`
 
-El código del frontend se agrupa por funcionalidad del producto (autenticación, workspace, historial), no por tipo técnico.
+El código del frontend se agrupa por funcionalidad del producto (`auth`, `chat`, `admin`, `settings`), no por tipo técnico. Cada módulo exporta sus componentes a través de un barrel file (`index.ts`).
 
-### Clasificadores del worker — `apps/worker/src/classifiers/`
+### Pruebas por aplicación — `apps/*/tests/`
 
-Módulo dedicado a detectar la aplicabilidad técnica de cada chunk (tipo de robot, número de ejes, versión del controlador). Esta carpeta existe porque el filtrado por contexto técnico es central en el producto.
+Cada aplicación mantiene su suite automatizada en una carpeta `tests/` propia ubicada en la raíz del área (`api`, `web`, `worker`) para separar claramente código productivo y código de prueba.
 
 ### Documentación — `docs/`
 

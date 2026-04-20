@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { IBM_Plex_Mono, IBM_Plex_Sans, Newsreader } from "next/font/google";
 import "@/styles/globals.css";
+import { SessionProvider } from "@/features/auth";
 
 const displayFont = Newsreader({
   subsets: ["latin"],
@@ -23,11 +24,11 @@ const monoFont = IBM_Plex_Mono({
 
 export const metadata: Metadata = {
   title: "RC7 Programming Assistant",
-  description: "Asistente de programacion PAC para robots DENSO RC7."
+  description: "Asistente de programación PAC para robots DENSO RC7.",
 };
 
 export default function RootLayout({
-  children
+  children,
 }: Readonly<{
   children: ReactNode;
 }>) {
@@ -36,7 +37,9 @@ export default function RootLayout({
       lang="es"
       className={`${displayFont.variable} ${bodyFont.variable} ${monoFont.variable}`}
     >
-      <body>{children}</body>
+      <body>
+        <SessionProvider>{children}</SessionProvider>
+      </body>
     </html>
   );
 }

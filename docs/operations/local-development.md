@@ -113,3 +113,4 @@ docker compose up --build -d api
 - El frontend **no debe contener** credenciales ni secretos hardcodeados
 - La autenticación se resuelve **exclusivamente** desde el backend
 - Cualquier cambio funcional debe actualizar documentación y pruebas en la misma iteración
+- La ejecución de servicios, shells y pruebas se realiza **dentro de Docker**

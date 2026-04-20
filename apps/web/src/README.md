@@ -10,20 +10,19 @@ Rutas y layouts de la aplicación (Next.js App Router):
 
 | Ruta | Archivo | Descripción |
 |---|---|---|
-| `/` | `page.tsx` | Landing / Login |
-| `/app` | `app/page.tsx` | Workspace del asistente |
-| `/admin` | `admin/page.tsx` | Consola administrativa |
+| `/` | `page.tsx` | Login |
+| `/chat` | `chat/page.tsx` | Workspace del asistente |
+| `/admin/manuals` | `admin/manuals/page.tsx` | Consola administrativa |
+| `/settings` | `settings/page.tsx` | Configuración de perfil |
 
 ## Directorio `components/`
 
-Componentes reutilizables y presentacionales, separados de `features/` para no mezclar piezas visuales con lógica de negocio.
+Componentes compartidos y presentacionales:
 
 | Subdirectorio | Contenido |
 |---|---|
-| `auth/` | Formulario de login, rutas protegidas |
-| `chat/` | Componentes de conversación |
-| `layout/` | Shell de la aplicación, header, perfil de sesión |
-| `shared/` | Componentes genéricos reutilizables |
+| `layout/` | Header de la aplicación |
+| `shared/` | Componentes genéricos (robot SVG, etc.) |
 
 ## Directorio `features/`
 
@@ -31,21 +30,17 @@ Módulos funcionales del producto, agrupados por dominio:
 
 | Módulo | Responsabilidad |
 |---|---|
-| `auth/` | Lógica de autenticación |
-| `history/` | Historial de consultas |
-| `workspace/` | Panel principal del asistente |
-| `references/` | Referencias documentales |
-| `robots/` | Configuración del robot |
-| `admin/` | Funcionalidades administrativas |
+| `auth/` | Login, sesión, rutas protegidas, menú de usuario |
+| `chat/` | Panel de conversación e historial |
+| `admin/` | Gestión de manuales |
+| `settings/` | Configuración de perfil y contraseña |
+
+Cada módulo exporta sus componentes públicos mediante un barrel file (`index.ts`).
 
 ## Directorio `lib/`
 
-Clientes HTTP, helpers de formateo, manejo de tokens y utilidades transversales del cliente.
+Clientes HTTP (`api-client.ts`), helpers de autenticación (`auth.ts`), perfil (`profile.ts`), manuales (`manuals.ts`) y utilidades (`cn.ts`).
 
 ## Directorio `styles/`
 
-Estilos globales y tokens de diseño visual.
-
-## Directorio `types/`
-
-Tipos TypeScript compartidos por toda la aplicación web.
+Tokens de diseño (Tailwind CSS v4 `@theme` block) y estilos base. El tema oscuro se define mediante variables CSS: `--color-bg`, `--color-surface`, `--color-ink`, `--color-accent`, etc.

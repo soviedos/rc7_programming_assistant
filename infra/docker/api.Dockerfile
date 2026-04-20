@@ -7,6 +7,7 @@ ENV PYTHONUNBUFFERED=1
 
 COPY apps/api/pyproject.toml ./
 COPY apps/api/src ./src
+COPY apps/api/tests ./tests
 
 RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -e .[dev]
 

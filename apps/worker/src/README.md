@@ -6,7 +6,15 @@ Organización del código fuente del pipeline de ingestión documental.
 
 ## Directorio `jobs/`
 
-Definición de trabajos ejecutables. Cada job encapsula una unidad de trabajo completa que puede ser disparada desde el backend vía Redis.
+Definición de trabajos ejecutables. En la iteración actual contiene el loop operativo que reclama manuales pendientes, descarga el PDF, extrae texto, genera chunks y persiste el resultado.
+
+## Directorio `core/`
+
+Configuración del worker a partir de variables de entorno compartidas con el stack Docker.
+
+## Directorio `db/`
+
+Sesión SQLAlchemy y modelos persistentes necesarios para reclamar manuales y guardar chunks indexables.
 
 ## Directorio `parsers/`
 
@@ -14,27 +22,12 @@ Extracción de texto desde PDFs y detección de estructura documental (capítulo
 
 ## Directorio `chunking/`
 
-Segmentación del contenido extraído en unidades útiles para retrieval. Los chunks se dimensionan para maximizar la relevancia en búsqueda semántica.
+Segmentación del contenido extraído en unidades útiles para retrieval. La implementación actual genera chunks textuales base por página y tamaño máximo.
 
-## Directorio `classifiers/`
+## Directorio `services/`
 
-Detección de aplicabilidad técnica de cada chunk:
-
-| Dimensión | Descripción |
-|---|---|
-| Tipo de robot | 4-axis, 6-axis |
-| Soporte de visión | Habilitado / No habilitado |
-| Versión del controlador | Versión mínima requerida |
-| Aplicabilidad | Todos los robots o modelos específicos |
-
-## Directorio `embeddings/`
-
-Generación y normalización de embeddings vectoriales para cada chunk procesado.
-
-## Directorio `indexing/`
-
-Carga de chunks y vectores en PostgreSQL + pgvector, con metadatos de clasificación y referencia al documento original.
+Integraciones externas del worker, como la descarga de manuales desde MinIO.
 
 ## Directorio `utils/`
 
-Utilidades transversales del pipeline: logging, manejo de archivos temporales y helpers compartidos.
+Utilidades transversales del pipeline: logging estructurado y helpers compartidos.

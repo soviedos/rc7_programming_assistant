@@ -19,3 +19,7 @@ Los Dockerfiles se referencian desde `docker-compose.yml` y se construyen autom�
 ```bash
 docker compose up --build -d
 ```
+
+## Ejecución operativa
+
+El flujo de desarrollo y validación del proyecto está orientado a contenedores: servicios, shells y suites de prueba deben correrse mediante `docker compose`.

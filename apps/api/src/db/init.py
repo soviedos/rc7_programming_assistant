@@ -10,6 +10,7 @@ from src.services.auth.passwords import hash_password
 def initialize_database() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_user_columns()
+    ensure_manual_columns()
     seed_bootstrap_admin()
 
 
@@ -35,6 +36,36 @@ def ensure_user_columns() -> None:
                     "ADD COLUMN profile_settings JSON DEFAULT '{}' NOT NULL"
                 )
             )
+
+
+def ensure_manual_columns() -> None:
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+    if "manuals" not in table_names:
+        return
+
+    manual_columns = {column["name"] for column in inspector.get_columns("manuals")}
+    missing_columns = {
+        "chunk_count": "INTEGER DEFAULT 0 NOT NULL",
+        "last_error": "TEXT",
+        "indexed_at": "TIMESTAMP",
+    }
+
+    with engine.begin() as connection:
+        for column_name, sql_type in missing_columns.items():
+            if column_name in manual_columns:
+                continue
+
+            if engine.dialect.name == "postgresql":
+                connection.execute(
+                    text(
+                        f"ALTER TABLE manuals ADD COLUMN IF NOT EXISTS {column_name} {sql_type}"
+                    )
+                )
+            else:
+                connection.execute(
+                    text(f"ALTER TABLE manuals ADD COLUMN {column_name} {sql_type}")
+                )
 
 
 def seed_bootstrap_admin() -> None:

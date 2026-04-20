@@ -154,6 +154,9 @@ curl -s http://localhost:8000/api/v1/health/ | python3 -m json.tool
 | `POST` | `/api/v1/auth/switch-role` | Cambio de rol activo |
 | `POST` | `/api/v1/auth/logout` | Cierre de sesión |
 | `GET` | `/api/v1/admin/status` | Estado administrativo |
+| `GET` | `/api/v1/manuals` | Listado de manuales registrados |
+| `GET` | `/api/v1/manuals/{id}` | Detalle de un manual |
+| `POST` | `/api/v1/manuals` | Carga de un manual PDF |
 | `POST` | `/api/v1/chat/generate` | Generación de respuesta del asistente |
 
 > Documentación completa disponible en [Swagger UI](http://localhost:8000/docs) con el stack en ejecución.
@@ -163,6 +166,10 @@ curl -s http://localhost:8000/api/v1/health/ | python3 -m json.tool
 ## Testing
 
 Todas las suites de prueba se ejecutan dentro de los contenedores:
+
+- Backend: `apps/api/tests/`
+- Frontend: `apps/web/tests/`
+- Worker: `apps/worker/tests/`
 
 ```bash
 # Backend (pytest)

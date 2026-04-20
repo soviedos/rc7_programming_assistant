@@ -11,11 +11,9 @@ from src.api.v1.schemas.auth import (
     LoginOptionsResponse,
     LoginRequest,
     LogoutResponse,
-    RoleName,
     RoleSwitchRequest,
     SessionResponse,
 )
-from src.core.config import settings
 from src.services.auth.passwords import verify_password
 from src.services.auth.users import build_session_response, get_user_by_email
 
@@ -38,7 +36,11 @@ async def login(
 ) -> SessionResponse:
     user = get_user_by_email(db_session, payload.email)
 
-    if not user or not user.is_active or not verify_password(payload.password, user.password_hash):
+    if (
+        not user
+        or not user.is_active
+        or not verify_password(payload.password, user.password_hash)
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales invalidas.",

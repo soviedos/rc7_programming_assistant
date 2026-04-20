@@ -19,6 +19,14 @@ Gestión completa del ciclo de autenticación:
 
 Implementa firma y lectura de cookies de sesión con JWT (HttpOnly, Secure en producción).
 
+### `profile`
+
+| Endpoint | Método | Descripción |
+|---|---|---|
+| `/api/v1/profile` | `GET` | Datos del perfil del usuario autenticado |
+| `/api/v1/profile` | `PATCH` | Actualización de nombre y preferencias |
+| `/api/v1/profile/password` | `PUT` | Cambio de contraseña con verificación de la actual |
+
 ### `health`
 
 | Endpoint | Método | Descripción |
@@ -37,13 +45,25 @@ Actualmente expone un contrato placeholder que devuelve resumen, código PAC y r
 
 | Endpoint | Método | Descripción |
 |---|---|---|
-| `/api/v1/admin/status` | `GET` | Estado administrativo del sistema |
+| `/api/v1/admin/status` | `GET` | Estado administrativo del sistema (requiere rol admin) |
 
-Contrato inicial para sostener la consola administrativa del frontend.
+Contrato inicial para sostener la consola administrativa del frontend. Protegido con `get_current_admin_user`.
 
 ---
 
 ## Módulos parciales
+
+### `manuals`
+
+Gestión inicial de la base documental:
+
+| Endpoint | Método | Descripción |
+|---|---|---|
+| `/api/v1/manuals` | `GET` | Lista los manuales registrados |
+| `/api/v1/manuals/{id}` | `GET` | Devuelve el detalle de un manual |
+| `/api/v1/manuals` | `POST` | Carga un PDF a MinIO y persiste sus metadatos |
+
+Implementado en una primera fase: registro del manual, almacenamiento en MinIO y estado inicial de ingestión (`pending`). Pendiente: versionado, reprocesamiento, integración automática con el worker y seguimiento detallado del pipeline.
 
 ### `users`
 
@@ -52,13 +72,6 @@ El modelo `User` y la persistencia para autenticación están implementados. Pen
 ---
 
 ## Módulos planificados
-
-### `manuals`
-
-Gestión de la base documental:
-- Carga de PDFs a MinIO
-- Versionado de documentos
-- Metadatos por robot y versión del controlador
 
 ### `retrieval`
 

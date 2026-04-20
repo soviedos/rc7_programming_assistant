@@ -1,3 +1,4 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +21,8 @@ class Settings(BaseSettings):
     redis_host: str = "redis"
     redis_port: int = 6379
     minio_endpoint: str = "http://minio:9000"
+    minio_root_user: str = "minioadmin"
+    minio_root_password: str = "minioadmin"
     minio_bucket_manuals: str = "rc7-manuals"
     gemini_api_key: str = "replace_me"
 
@@ -29,6 +32,14 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def _reject_placeholder_secrets(self) -> "Settings":
+        if self.app_env != "development" and self.jwt_secret == "replace_me":
+            raise ValueError(
+                "jwt_secret must be set to a secure value in non-development environments"
+            )
+        return self
 
     @property
     def sqlalchemy_database_url(self) -> str:

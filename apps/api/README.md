@@ -15,6 +15,7 @@ Backend principal del RC7 Programming Assistant, responsable de la autenticació
 | pwdlib (Argon2) | Hashing de contraseñas |
 | psycopg | Driver PostgreSQL |
 | Redis | Conexión con cache y colas |
+| MinIO | Almacenamiento de manuales PDF |
 
 ---
 
@@ -25,6 +26,7 @@ Backend principal del RC7 Programming Assistant, responsable de la autenticació
 - Cambio de rol activo (admin ↔ user)
 - Bootstrap del administrador por variables de entorno
 - Contratos base para chat y administración
+- Registro y carga inicial de manuales PDF a MinIO
 - Healthcheck para orquestación Docker
 
 ## Responsabilidades planificadas
@@ -48,6 +50,9 @@ Backend principal del RC7 Programming Assistant, responsable de la autenticació
 | `POST` | `/api/v1/auth/switch-role` | Cambio de rol |
 | `POST` | `/api/v1/auth/logout` | Cierre de sesión |
 | `GET` | `/api/v1/admin/status` | Estado administrativo |
+| `GET` | `/api/v1/manuals` | Listado administrativo de manuales |
+| `GET` | `/api/v1/manuals/{id}` | Detalle de un manual registrado |
+| `POST` | `/api/v1/manuals` | Carga de manual PDF y registro de metadatos |
 | `POST` | `/api/v1/chat/generate` | Generación de respuesta |
 
 > Documentación interactiva completa en http://localhost:8000/docs

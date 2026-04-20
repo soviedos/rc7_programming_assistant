@@ -20,23 +20,35 @@ La interfaz se comporta como una **herramienta de ingeniería asistida**, no com
 
 ### `/` — Login
 
+- Diseño profesional con identidad RobLab · Universidad CENFOTEC
+- Robot SVG decorativo en el lado izquierdo
 - Autenticación con correo autorizado y contraseña
-- Opción para mostrar/ocultar contraseña
 - Validación amigable con mensajes de error claros
 - Espacio reservado para Google SSO (pendiente)
 
-### `/app` — Workspace del asistente
+### `/chat` — Workspace del asistente
 
-- Sidebar izquierdo: configuración del robot
-- Panel central: conversación y código PAC
-- Sidebar derecho: referencias e historial
+- Header con identidad del sistema y menú de usuario
+- Panel de conversación con historial de mensajes
+- Sidebar de historial de consultas
 
-### `/admin` — Consola administrativa
+### `/admin/manuals` — Consola administrativa
 
-- Resumen operativo del sistema
-- Usuarios autorizados (visualización)
-- Parámetros del modelo Gemini (visualización)
-- Base documental (visualización)
+- Listado de manuales registrados con estado de ingestión
+- Modal de carga con extracción automática de metadatos desde nombre del PDF
+- Formulario editable para título, modelo de robot, versión de controlador e idioma
+
+### `/settings` — Configuración de perfil
+
+- Edición de nombre y preferencias de idioma
+- Cambio de contraseña con validación de reglas
+
+### Rutas auxiliares
+
+| Ruta | Comportamiento |
+|---|---|
+| `/profile` | Redirige a `/settings` |
+| `/admin` | Redirige a `/admin/manuals` |
 
 ---
 
@@ -44,7 +56,8 @@ La interfaz se comporta como una **herramienta de ingeniería asistida**, no com
 
 | Criterio | Descripción |
 |---|---|
+| **Tema oscuro unificado** | Todos los screens usan tokens de diseño centralizados (`bg`, `surface`, `ink`, `accent`) definidos en Tailwind CSS v4 |
 | **Consistencia visual** | Mismo lenguaje de diseño entre login, workspace y administración |
 | **Navegación por sesión** | Las rutas se protegen según la sesión activa, sin credenciales en el frontend |
 | **Layout adaptable** | Estructura responsive que prioriza la legibilidad del código PAC |
-| **Contexto técnico explícito** | La configuración del robot siempre es visible junto a la conversación |
+| **Barrel exports** | Cada feature module exporta via `index.ts` para imports limpios |

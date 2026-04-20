@@ -1,4 +1,6 @@
-import { getApiBaseUrl } from "@/lib/auth";
+import { api } from "@/lib/api-client";
+
+// ── Types ──────────────────────────────────────────────────────────
 
 export type PreferredLanguage = "es" | "en";
 
@@ -25,48 +27,19 @@ type ProfileActionResponse = {
   message: string;
 };
 
-type ApiValidationDetail = {
-  msg?: string;
-};
+// ── Normalizers ────────────────────────────────────────────────────
 
-type ApiErrorResponse = {
-  detail?: string | ApiValidationDetail[];
-};
-
-function normalizeApiErrorMessage(
-  detail: ApiErrorResponse["detail"],
-  fallback: string,
-): string {
-  if (typeof detail === "string" && detail.trim()) {
-    return detail;
-  }
-
-  if (Array.isArray(detail)) {
-    const messages = detail
-      .map((entry) => entry.msg?.trim())
-      .filter((message): message is string => Boolean(message));
-
-    if (messages.length > 0) {
-      return messages.join(" ");
-    }
-  }
-
-  return fallback;
-}
-
-async function parseResponse<T>(response: Response): Promise<T> {
-  return (await response.json()) as T;
-}
-
-function normalizeProfile(payload: ProfileApiResponse): UserProfile {
+function normalizeProfile(raw: ProfileApiResponse): UserProfile {
   return {
-    email: payload.email,
-    displayName: payload.display_name,
+    email: raw.email,
+    displayName: raw.display_name,
     settings: {
-      preferredLanguage: payload.settings.preferred_language,
+      preferredLanguage: raw.settings.preferred_language,
     },
   };
 }
+
+// ── Validation ─────────────────────────────────────────────────────
 
 export const PASSWORD_RULES = [
   "Al menos 8 caracteres",
@@ -78,104 +51,52 @@ export const PASSWORD_RULES = [
 ] as const;
 
 export function validatePasswordRules(password: string): string | null {
-  if (password.length < 8) {
-    return "La nueva contraseña debe tener al menos 8 caracteres.";
-  }
-
-  if (password.length > 16) {
-    return "La nueva contraseña debe tener como máximo 16 caracteres.";
-  }
-
-  if (!/[A-Z]/.test(password)) {
-    return "La nueva contraseña debe incluir al menos una letra mayúscula.";
-  }
-
-  if (!/[a-z]/.test(password)) {
-    return "La nueva contraseña debe incluir al menos una letra minúscula.";
-  }
-
-  if (!/[0-9]/.test(password)) {
-    return "La nueva contraseña debe incluir al menos un número.";
-  }
-
-  if (!/[^A-Za-z0-9]/.test(password)) {
-    return "La nueva contraseña debe incluir al menos un carácter especial.";
-  }
-
+  if (password.length < 8) return "La nueva contraseña debe tener al menos 8 caracteres.";
+  if (password.length > 16) return "La nueva contraseña debe tener como máximo 16 caracteres.";
+  if (!/[A-Z]/.test(password)) return "La nueva contraseña debe incluir al menos una letra mayúscula.";
+  if (!/[a-z]/.test(password)) return "La nueva contraseña debe incluir al menos una letra minúscula.";
+  if (!/[0-9]/.test(password)) return "La nueva contraseña debe incluir al menos un número.";
+  if (!/[^A-Za-z0-9]/.test(password)) return "La nueva contraseña debe incluir al menos un carácter especial.";
   return null;
 }
 
+// ── API calls ──────────────────────────────────────────────────────
+
 export async function fetchProfile(): Promise<UserProfile> {
-  const response = await fetch(`${getApiBaseUrl()}/api/v1/profile`, {
-    credentials: "include",
-  });
-
-  const payload = await parseResponse<ProfileApiResponse | ApiErrorResponse>(response);
-  if (!response.ok) {
-    throw new Error(
-      normalizeApiErrorMessage(
-        "detail" in payload ? payload.detail : undefined,
-        "No fue posible obtener el perfil del usuario.",
-      ),
-    );
-  }
-
-  return normalizeProfile(payload as ProfileApiResponse);
+  const raw = await api.get<ProfileApiResponse>(
+    "/api/v1/profile",
+    "No fue posible obtener el perfil del usuario.",
+  );
+  return normalizeProfile(raw);
 }
 
-export async function updateProfile(profile: UserProfile): Promise<UserProfile> {
-  const response = await fetch(`${getApiBaseUrl()}/api/v1/profile`, {
-    method: "PUT",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+export async function updateProfile(
+  profile: UserProfile,
+): Promise<UserProfile> {
+  const raw = await api.put<ProfileApiResponse>(
+    "/api/v1/profile",
+    {
       display_name: profile.displayName,
       settings: {
         preferred_language: profile.settings.preferredLanguage,
       },
-    }),
-  });
-
-  const payload = await parseResponse<ProfileApiResponse | ApiErrorResponse>(response);
-  if (!response.ok) {
-    throw new Error(
-      normalizeApiErrorMessage(
-        "detail" in payload ? payload.detail : undefined,
-        "No fue posible actualizar el perfil.",
-      ),
-    );
-  }
-
-  return normalizeProfile(payload as ProfileApiResponse);
+    },
+    "No fue posible actualizar el perfil.",
+  );
+  return normalizeProfile(raw);
 }
 
 export async function changePassword(
   currentPassword: string,
   newPassword: string,
 ): Promise<string> {
-  const response = await fetch(`${getApiBaseUrl()}/api/v1/profile/password`, {
-    method: "POST",
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const result = await api.post<ProfileActionResponse>(
+    "/api/v1/profile/password",
+    {
       current_password: currentPassword,
       new_password: newPassword,
-    }),
-  });
-
-  const payload = await parseResponse<ProfileActionResponse | ApiErrorResponse>(response);
-  if (!response.ok) {
-    throw new Error(
-      normalizeApiErrorMessage(
-        "detail" in payload ? payload.detail : undefined,
-        "No fue posible actualizar la contraseña.",
-      ),
-    );
-  }
-
-  return (payload as ProfileActionResponse).message;
+    },
+    "No fue posible actualizar la contraseña.",
+  );
+  return result.message;
 }

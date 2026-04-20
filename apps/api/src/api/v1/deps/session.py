@@ -92,3 +92,16 @@ def get_active_role(request: Request, user: User) -> RoleName:
     if role in user.roles:
         return role  # type: ignore[return-value]
     return "user"
+
+
+def get_current_admin_user(request: Request, db_session: DbSession) -> User:
+    user = get_current_user(request, db_session)
+    active_role = get_active_role(request, user)
+
+    if active_role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Se requiere una sesion activa con rol de administrador.",
+        )
+
+    return user

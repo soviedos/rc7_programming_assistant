@@ -42,7 +42,7 @@ Almacenamiento de objetos compatible con S3 para PDFs originales y derivados del
 
 ### Redis
 
-Coordinación de tareas asincrónicas entre el backend y el worker, y caché ligera de operaciones frecuentes.
+Previsto para coordinación de tareas asincrónicas y caché. Actualmente desplegado en el stack pero sin consumidores activos.
 
 ---
 
@@ -61,7 +61,7 @@ Coordinación de tareas asincrónicas entre el backend y el worker, y caché lig
 
 ```text
 1. Administrador carga un manual PDF → MinIO
-2. Backend registra el documento y delega al worker vía Redis
+2. Backend registra el documento y el worker lo reclama por polling a PostgreSQL
 3. Worker parsea, clasifica por robot/controlador y genera chunks
 4. Chunks + embeddings se indexan en PostgreSQL + pgvector
 5. Backend recupera contexto filtrado por configuración del robot

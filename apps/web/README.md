@@ -45,6 +45,8 @@ Aplicación frontend del RC7 Programming Assistant, responsable de la experienci
 
 ## Pruebas
 
+Las pruebas del frontend se concentran en `apps/web/tests/`.
+
 ```bash
 docker compose exec web npm test
 ```
