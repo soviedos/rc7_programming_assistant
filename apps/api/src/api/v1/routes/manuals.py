@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from src.api.v1.deps import DbSession, get_current_admin_user
 from src.api.v1.schemas.manuals import (
@@ -15,7 +15,13 @@ from src.api.v1.schemas.manuals import (
     ManualResponse,
     ManualUpdateRequest,
 )
-from src.db.models import Manual, ManualReviewSummary, User
+from src.db.models import (
+    Manual,
+    ManualChunk,
+    ManualChunkReview,
+    ManualReviewSummary,
+    User,
+)
 from src.services.manuals import (
     ManualStorageError,
     ManualStorageService,
@@ -248,6 +254,13 @@ async def delete_manual(
             detail=str(exc),
         ) from exc
 
+    db_session.execute(delete(ManualChunk).where(ManualChunk.manual_id == manual.id))
+    db_session.execute(
+        delete(ManualChunkReview).where(ManualChunkReview.manual_id == manual.id)
+    )
+    db_session.execute(
+        delete(ManualReviewSummary).where(ManualReviewSummary.manual_id == manual.id)
+    )
     db_session.delete(manual)
     db_session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

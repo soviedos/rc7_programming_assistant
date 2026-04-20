@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.api.v1.routes.manuals import get_manual_storage_service
-from src.db.models import Manual, ManualReviewSummary, User
+from src.db.models import (
+    Manual,
+    ManualChunk,
+    ManualChunkReview,
+    ManualReviewSummary,
+    User,
+)
 from src.services.auth.passwords import hash_password
 
 
@@ -272,6 +279,53 @@ def test_manual_update_open_and_delete_flow(
         manual_id = manual.id
         fake_storage.objects[manual.storage_key] = b"%PDF-1.4 test content"
 
+        db_session.add(
+            ManualChunk(
+                manual_id=manual_id,
+                chunk_index=0,
+                page_number=1,
+                text="MOVE P, HOME",
+            )
+        )
+        db_session.add(
+            ManualChunkReview(
+                manual_id=manual_id,
+                chunk_index=0,
+                page_number=1,
+                review_status="reviewed",
+                selected_reason="sampled",
+                action="keep",
+                reviewer_model="gemini-2.0-flash",
+                coherence_score=0.9,
+                completeness_score=0.9,
+                boundary_quality_score=0.9,
+                reason="ok",
+                raw_response='{"action":"keep"}',
+            )
+        )
+        db_session.add(
+            ManualReviewSummary(
+                manual_id=manual_id,
+                initial_chunk_count=1,
+                final_chunk_count=1,
+                reviewed_count=1,
+                skipped_count=0,
+                error_count=0,
+                merge_actions=0,
+                split_actions=0,
+                keep_actions=1,
+                regenerate_actions=0,
+                applied_autofixes=0,
+                avg_coherence_score=0.9,
+                avg_completeness_score=0.9,
+                avg_boundary_quality_score=0.9,
+                estimated_input_tokens=100,
+                estimated_output_tokens=40,
+                estimated_cost_usd=0.001,
+            )
+        )
+        db_session.commit()
+
         update_response = client.put(
             f"/api/v1/manuals/{manual_id}",
             json={
@@ -294,6 +348,28 @@ def test_manual_update_open_and_delete_flow(
 
         db_session.expire_all()
         assert db_session.get(Manual, manual_id) is None
+        assert (
+            db_session.scalar(
+                select(ManualChunk).where(ManualChunk.manual_id == manual_id)
+            )
+            is None
+        )
+        assert (
+            db_session.scalar(
+                select(ManualChunkReview).where(
+                    ManualChunkReview.manual_id == manual_id
+                )
+            )
+            is None
+        )
+        assert (
+            db_session.scalar(
+                select(ManualReviewSummary).where(
+                    ManualReviewSummary.manual_id == manual_id
+                )
+            )
+            is None
+        )
     finally:
         client.app.dependency_overrides.pop(get_manual_storage_service, None)
 
