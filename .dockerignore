@@ -1,0 +1,13 @@
+.DS_Store
+.git
+.gitignore
+**/.next
+node_modules
+**/node_modules
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+storage/data
+storage/tmp
+*.pyc
