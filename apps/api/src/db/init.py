@@ -2,7 +2,7 @@ from sqlalchemy import inspect, select, text
 
 from src.core.config import settings
 from src.db.base import Base
-from src.db.models import RolePermission, User
+from src.db.models import ChatHistory, RolePermission, User
 from src.db.session import SessionLocal, engine
 from src.services.auth.passwords import hash_password
 
@@ -50,6 +50,8 @@ def initialize_database() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_user_columns()
     ensure_manual_columns()
+    ensure_chunk_embedding_column()
+    ensure_chat_history_table()
     seed_bootstrap_admin()
     seed_role_permissions()
 
@@ -108,6 +110,36 @@ def ensure_manual_columns() -> None:
                 connection.execute(
                     text(f"ALTER TABLE manuals ADD COLUMN {column_name} {sql_type}")
                 )
+
+
+def ensure_chunk_embedding_column() -> None:
+    """Add embedding REAL[] column to manual_chunks if it does not exist yet."""
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+    if "manual_chunks" not in table_names:
+        return
+
+    chunk_columns = {
+        column["name"] for column in inspector.get_columns("manual_chunks")
+    }
+    if "embedding" in chunk_columns:
+        return
+
+    with engine.begin() as connection:
+        connection.execute(
+            text("ALTER TABLE manual_chunks ADD COLUMN IF NOT EXISTS embedding REAL[]")
+        )
+
+
+def ensure_chat_history_table() -> None:
+    """Create the chat_history table if it does not exist yet."""
+    from src.db.models.chat_history import ChatHistory  # noqa: PLC0415
+
+    inspector = inspect(engine)
+    if "chat_history" in set(inspector.get_table_names()):
+        return
+
+    ChatHistory.__table__.create(bind=engine)
 
 
 def seed_bootstrap_admin() -> None:

@@ -311,6 +311,6 @@ export async function cleanupStaleProcessing(
 }
 
 export function getManualOpenUrl(manualId: number): string {
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
   return `${baseUrl}/api/v1/manuals/${manualId}/file`;
 }

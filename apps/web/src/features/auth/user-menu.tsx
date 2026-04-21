@@ -40,7 +40,7 @@ export function UserMenu() {
         <span className="text-xs text-muted">{ROLE_LABELS[session.role]}</span>
       </div>
 
-      {session.availableRoles.length > 1 && (
+      {session.availableRoles.includes("admin") && session.availableRoles.length > 1 && (
         <div className="relative">
           <select
             className="appearance-none bg-surface border border-border rounded-md px-2 py-1 pr-7 text-xs text-ink cursor-pointer hover:bg-surface-hover transition-colors"

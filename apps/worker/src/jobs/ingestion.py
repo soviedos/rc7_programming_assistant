@@ -14,6 +14,7 @@ from src.core.config import settings
 from src.db.models import Manual, ManualChunk, ManualChunkReview, ManualReviewSummary
 from src.db.session import SessionLocal, initialize_database
 from src.parsers.pdf import extract_pdf_text_by_page
+from src.services.embeddings import embed_texts
 from src.services.semantic_review import (
     ChunkReviewResult,
     GeminiSemanticReviewer,
@@ -201,13 +202,23 @@ def index_manual_chunks(
         delete(ManualReviewSummary).where(ManualReviewSummary.manual_id == manual.id)
     )
 
+    # Generate embeddings for all chunks in one batched call
+    chunk_texts = [chunk.text for chunk in chunks]
+    try:
+        embeddings = embed_texts(chunk_texts)
+    except Exception as exc:
+        log("worker", f"No se generaron embeddings para manual #{manual.id}: {exc}")
+        embeddings = [None] * len(chunks)  # type: ignore[list-item]
+
     for chunk_index, chunk in enumerate(chunks):
+        embedding = embeddings[chunk_index] if chunk_index < len(embeddings) else None
         session.add(
             ManualChunk(
                 manual_id=manual.id,
                 chunk_index=chunk_index,
                 page_number=chunk.page_number,
                 text=chunk.text,
+                embedding=embedding if embedding else None,
             )
         )
 
