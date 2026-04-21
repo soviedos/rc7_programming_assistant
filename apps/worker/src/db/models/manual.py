@@ -26,7 +26,12 @@ class Manual(Base):
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     uploaded_by_user_id: Mapped[int] = mapped_column(Integer, index=True)
     uploaded_by_email: Mapped[str] = mapped_column(String(320))
-    indexed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    processing_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    indexed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

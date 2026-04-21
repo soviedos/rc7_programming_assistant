@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useState, type DragEvent } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
   Upload,
   X,
@@ -13,17 +13,19 @@ import {
   Pencil,
   Trash2,
   ExternalLink,
+  RefreshCw,
+  Copy,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  fetchAdminStatus,
+  cleanupStaleProcessing,
   fetchManuals,
   fetchManualReviewSummaries,
   getManualOpenUrl,
+  retryManual,
   deleteManual,
   updateManual,
   uploadManual,
-  type AdminStatus,
   type ManualDocument,
   type ManualReviewSummary,
 } from "@/lib/manuals";
@@ -74,6 +76,85 @@ function formatUsd(value: number): string {
     currency: "USD",
     maximumFractionDigits: 4,
   }).format(value);
+}
+
+function parseTimestampMs(value: string | null): number | null {
+  if (!value) return null;
+
+  const trimmed = value.trim();
+  const hasTimezone = /[zZ]$|[+-]\d{2}:\d{2}$/.test(trimmed);
+  const looksNaiveTimestamp =
+    /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}/.test(trimmed) && !hasTimezone;
+
+  if (!looksNaiveTimestamp) {
+    const direct = new Date(trimmed).getTime();
+    if (Number.isFinite(direct)) {
+      return direct;
+    }
+  }
+
+  const normalized = trimmed.replace(" ", "T").replace(/(\.\d{3})\d+/, "$1");
+  const normalizedHasTimezone = /[zZ]$|[+-]\d{2}:\d{2}$/.test(normalized);
+  const withTimezone = normalizedHasTimezone ? normalized : `${normalized}Z`;
+  const parsed = new Date(withTimezone).getTime();
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
+function formatElapsedSince(value: string | null, nowMs: number): string | null {
+  const startMs = parseTimestampMs(value);
+  if (startMs === null) return null;
+
+  const rawDiffMs = nowMs - startMs;
+  // Ignore clearly future timestamps so callers can fall back to another source.
+  if (rawDiffMs < -5000) {
+    return null;
+  }
+
+  const diffMs = Math.max(0, rawDiffMs);
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  if (minutes <= 0) {
+    return `${seconds}s`;
+  }
+  return `${minutes}m ${seconds}s`;
+}
+
+function formatDurationBetween(startValue: string | null, endValue: string | null): string | null {
+  if (!startValue || !endValue) return null;
+  const startMs = parseTimestampMs(startValue);
+  const endMs = parseTimestampMs(endValue);
+  if (startMs === null || endMs === null || endMs < startMs) {
+    return null;
+  }
+
+  const totalSeconds = Math.floor((endMs - startMs) / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes <= 0) {
+    return `${seconds}s`;
+  }
+  return `${minutes}m ${seconds}s`;
+}
+
+function getManualProgress(
+  manual: ManualDocument,
+): { percent: number; label: string; barClassName: string } {
+  switch (manual.status) {
+    case "indexed":
+      return { percent: 100, label: "Indexado", barClassName: "bg-success" };
+    case "processing":
+      return { percent: 60, label: "Analizando", barClassName: "bg-info" };
+    case "failed":
+      return { percent: 100, label: "Fallido", barClassName: "bg-danger" };
+    case "pending":
+    default:
+      return { percent: 10, label: "En cola", barClassName: "bg-warning" };
+  }
 }
 
 // ── Status Badge ────────────────────────────────────────────────────
@@ -187,10 +268,33 @@ function UploadModal({
     setIsSubmitting(true);
     try {
       for (const item of items) {
-        await uploadManual({
-          title: item.title,
-          file: item.file,
-        });
+        try {
+          await uploadManual({
+            title: item.title,
+            file: item.file,
+          });
+        } catch (err) {
+          const message =
+            err instanceof Error ? err.message : "No fue posible cargar el manual.";
+          if (message.includes("mismo SHA-256")) {
+            const shouldUploadAsNewVersion = window.confirm(
+              `El PDF \"${item.file.name}\" ya existe (mismo SHA-256). ¿Deseas cargarlo como nueva version?`,
+            );
+
+            if (shouldUploadAsNewVersion) {
+              await uploadManual({
+                title: item.title,
+                file: item.file,
+                asNewVersion: true,
+              });
+              continue;
+            }
+
+            throw new Error(`Carga cancelada para ${item.file.name}.`);
+          }
+
+          throw err;
+        }
       }
 
       const uploadedCount = items.length;
@@ -532,7 +636,6 @@ function DeleteManualModal({
 // ── Main Component ──────────────────────────────────────────────────
 
 export function ManualsPanel() {
-  const [status, setStatus] = useState<AdminStatus | null>(null);
   const [manuals, setManuals] = useState<ManualDocument[]>([]);
   const [reviewSummaries, setReviewSummaries] = useState<Record<number, ManualReviewSummary>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -542,15 +645,16 @@ export function ManualsPanel() {
   const [showEdit, setShowEdit] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [selectedManual, setSelectedManual] = useState<ManualDocument | null>(null);
+  const [retryingManualIds, setRetryingManualIds] = useState<Set<number>>(new Set());
+  const [isCleaningStale, setIsCleaningStale] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [copiedManualId, setCopiedManualId] = useState<number | null>(null);
+  const copyResetTimerRef = useRef<number | null>(null);
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     try {
-      const [nextStatus, nextManuals] = await Promise.all([
-        fetchAdminStatus(),
-        fetchManuals(),
-      ]);
+      const nextManuals = await fetchManuals();
       const nextReviewSummaries = await fetchManualReviewSummaries();
-      setStatus(nextStatus);
       setManuals(nextManuals);
       setReviewSummaries(nextReviewSummaries);
       setError(null);
@@ -559,19 +663,125 @@ export function ManualsPanel() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, []);
 
   async function handleSuccess(nextMessage: string) {
     setMessage({ kind: "success", text: nextMessage });
     await loadData();
   }
 
+  async function handleRetryManual(manual: ManualDocument) {
+    setMessage(null);
+    setRetryingManualIds((prev) => new Set(prev).add(manual.id));
+
+    try {
+      await retryManual(manual.id);
+      await handleSuccess(`Reintento programado para ${manual.title}.`);
+    } catch (err) {
+      setMessage({
+        kind: "error",
+        text: err instanceof Error ? err.message : "No fue posible reintentar el manual.",
+      });
+    } finally {
+      setRetryingManualIds((prev) => {
+        const next = new Set(prev);
+        next.delete(manual.id);
+        return next;
+      });
+    }
+  }
+
+  async function handleCleanupStaleProcessing() {
+    setMessage(null);
+    setIsCleaningStale(true);
+
+    try {
+      const result = await cleanupStaleProcessing(10);
+      if (result.recovered > 0) {
+        setMessage({
+          kind: "success",
+          text: `Se reencolaron ${result.recovered} manual(es) atascados en processing.`,
+        });
+      } else {
+        setMessage({
+          kind: "success",
+          text: "No habia manuales atascados para limpiar.",
+        });
+      }
+      await loadData();
+    } catch (err) {
+      setMessage({
+        kind: "error",
+        text:
+          err instanceof Error
+            ? err.message
+            : "No fue posible limpiar manuales atascados.",
+      });
+    } finally {
+      setIsCleaningStale(false);
+    }
+  }
+
   useEffect(() => {
     loadData();
+  }, [loadData]);
+
+  useEffect(() => {
+    return () => {
+      if (copyResetTimerRef.current !== null) {
+        window.clearTimeout(copyResetTimerRef.current);
+      }
+    };
+  }, []);
+
+  const pendingQueue = useMemo(() => {
+    const queue = manuals
+      .filter((manual) => manual.status === "pending")
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime() ||
+          a.id - b.id,
+      );
+
+    const positions = new Map<number, number>();
+    queue.forEach((manual, index) => {
+      positions.set(manual.id, index + 1);
+    });
+    return positions;
+  }, [manuals]);
+
+  const hasActiveJobs = manuals.some(
+    (manual) => manual.status === "pending" || manual.status === "processing",
+  );
+
+  useEffect(() => {
+    if (!hasActiveJobs) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadData();
+    }, 5000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [hasActiveJobs, loadData]);
+
+  useEffect(() => {
+    const tick = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(tick);
+    };
   }, []);
 
   const indexedCount = manuals.filter((m) => m.status === "indexed").length;
-  const pendingCount = manuals.filter((m) => m.status === "pending" || m.status === "processing").length;
+  const processingCount = manuals.filter((m) => m.status === "processing").length;
+  const pendingCount = manuals.filter((m) => m.status === "pending").length;
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -584,13 +794,30 @@ export function ManualsPanel() {
               Base documental del asistente
             </p>
           </div>
-          <button
-            onClick={() => setShowUpload(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
-          >
-            <Upload className="h-4 w-4" />
-            Subir manual
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                void handleCleanupStaleProcessing();
+              }}
+              disabled={isCleaningStale}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-ink text-sm font-medium hover:bg-surface-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isCleaningStale ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              Limpiar processing atascados
+            </button>
+            <button
+              onClick={() => setShowUpload(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent-hover transition-colors"
+            >
+              <Upload className="h-4 w-4" />
+              Subir manual
+            </button>
+          </div>
         </div>
 
         {/* Inline stats */}
@@ -603,12 +830,17 @@ export function ManualsPanel() {
           <div className="flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-success" />
             <span className="text-muted">Indexados:</span>
-            <span className="font-semibold text-ink">{status?.manualsIndexed ?? indexedCount}</span>
+            <span className="font-semibold text-ink">{indexedCount}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4 text-info" />
+            <span className="text-muted">Procesando:</span>
+            <span className="font-semibold text-ink">{processingCount}</span>
           </div>
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-warning" />
             <span className="text-muted">Pendientes:</span>
-            <span className="font-semibold text-ink">{status?.pendingJobs ?? pendingCount}</span>
+            <span className="font-semibold text-ink">{pendingCount}</span>
           </div>
         </div>
       </div>
@@ -616,7 +848,16 @@ export function ManualsPanel() {
       {/* Content */}
       <div className="p-6">
         {message && (
-          <p className="mb-4 text-xs px-3 py-2 rounded-lg bg-success/10 text-success">{message.text}</p>
+          <p
+            className={cn(
+              "mb-4 text-xs px-3 py-2 rounded-lg",
+              message.kind === "error"
+                ? "bg-danger/10 text-danger"
+                : "bg-success/10 text-success",
+            )}
+          >
+            {message.text}
+          </p>
         )}
 
         {isLoading ? (
@@ -639,6 +880,40 @@ export function ManualsPanel() {
             {manuals.map((manual) => (
               (() => {
                 const summary = reviewSummaries[manual.id];
+                const progress = getManualProgress(manual);
+                const queuePosition = pendingQueue.get(manual.id);
+                const canRetry = manual.status === "failed";
+                const isRetrying = retryingManualIds.has(manual.id);
+                const elapsedProcessing =
+                  manual.status === "processing"
+                    ?
+                        formatElapsedSince(manual.processingStartedAt, nowMs) ??
+                        formatElapsedSince(manual.updatedAt, nowMs) ??
+                        formatElapsedSince(manual.createdAt, nowMs)
+                    : null;
+                const ingestionStartedAt =
+                  manual.processingStartedAt ?? manual.updatedAt ?? manual.createdAt;
+                const activeIngestionDuration =
+                  manual.status === "processing"
+                    ?
+                        formatElapsedSince(ingestionStartedAt, nowMs) ??
+                        elapsedProcessing
+                    : null;
+                const progressElapsedLabel =
+                  manual.status === "processing"
+                    ? activeIngestionDuration ?? elapsedProcessing
+                    : null;
+                const ingestionDuration =
+                  manual.status === "indexed"
+                    ?
+                        formatDurationBetween(manual.processingStartedAt, manual.indexedAt) ??
+                        formatDurationBetween(manual.createdAt, manual.indexedAt)
+                    : manual.status === "failed"
+                      ?
+                          formatDurationBetween(manual.processingStartedAt, manual.updatedAt) ??
+                          formatDurationBetween(manual.createdAt, manual.updatedAt)
+                      : null;
+
                 return (
               <article
                 key={manual.id}
@@ -660,6 +935,65 @@ export function ManualsPanel() {
                     {manual.chunkCount > 0 && <span>{manual.chunkCount} chunks</span>}
                     <span>{formatDate(manual.createdAt)}</span>
                   </div>
+                  {manual.sha256 && (
+                    <div className="flex flex-wrap items-center gap-3 mt-1.5 text-[11px] text-soft">
+                      <span className="break-all">SHA-256: {manual.sha256}</span>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(manual.sha256 ?? "");
+                            setCopiedManualId(manual.id);
+                            if (copyResetTimerRef.current !== null) {
+                              window.clearTimeout(copyResetTimerRef.current);
+                            }
+                            copyResetTimerRef.current = window.setTimeout(() => {
+                              setCopiedManualId((current) => (current === manual.id ? null : current));
+                            }, 2000);
+                            setMessage({
+                              kind: "success",
+                              text: `Hash SHA-256 copiado para ${manual.title}.`,
+                            });
+                          } catch {
+                            setMessage({
+                              kind: "error",
+                              text: "No fue posible copiar el hash SHA-256.",
+                            });
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-border text-soft hover:text-ink hover:bg-surface-hover transition-colors"
+                        aria-label={`Copiar SHA-256 de ${manual.title}`}
+                      >
+                        <Copy className="h-3 w-3" />
+                        {copiedManualId === manual.id ? "Copiado" : "Copiar"}
+                      </button>
+                    </div>
+                  )}
+                  {(activeIngestionDuration || ingestionDuration) && (
+                    <div className="flex flex-wrap items-center gap-3 mt-1 text-[11px] text-soft">
+                      {activeIngestionDuration && (
+                        <span>Tiempo consumido de indexación: {activeIngestionDuration}</span>
+                      )}
+                      {ingestionDuration && <span>Duración final de indexación: {ingestionDuration}</span>}
+                    </div>
+                  )}
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between text-[11px] text-soft mb-1">
+                      <span>
+                        Avance: {progress.label}
+                        {manual.status === "pending" && queuePosition ? ` (cola #${queuePosition})` : ""}
+                        {progressElapsedLabel ? ` - procesando hace ${progressElapsedLabel}` : ""}
+                      </span>
+                      <span>{progress.percent}%</span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-border/70 overflow-hidden">
+                      <div
+                        className={cn("h-full transition-all duration-500", progress.barClassName)}
+                        style={{ width: `${progress.percent}%` }}
+                        aria-label={`Avance ${manual.title}: ${progress.percent}%`}
+                      />
+                    </div>
+                  </div>
                   {summary && (
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-soft">
                       <span className="px-2 py-0.5 rounded-full bg-info/10 text-info">
@@ -672,6 +1006,11 @@ export function ManualsPanel() {
                         Costo: {formatUsd(summary.estimatedCostUsd)}
                       </span>
                     </div>
+                  )}
+                  {!summary && manual.status !== "failed" && (
+                    <p className="mt-2 text-[11px] text-soft">
+                      QA en espera. Las metricas aparecen cuando finaliza la indexacion.
+                    </p>
                   )}
                   {manual.notes && (
                     <p className="text-xs text-muted mt-1.5 line-clamp-2">{manual.notes}</p>
@@ -714,6 +1053,20 @@ export function ManualsPanel() {
                     <Trash2 className="h-3.5 w-3.5" />
                     Eliminar
                   </button>
+                  {canRetry && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleRetryManual(manual);
+                      }}
+                      disabled={isRetrying}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs text-info hover:bg-info/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      aria-label={`Reintentar ${manual.title}`}
+                    >
+                      {isRetrying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Clock className="h-3.5 w-3.5" />}
+                      Reintentar
+                    </button>
+                  )}
                 </div>
               </article>
                 );

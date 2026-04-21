@@ -18,6 +18,7 @@ export type ManualDocument = {
   storageKey: string;
   contentType: string;
   sizeBytes: number;
+  sha256: string | null;
   status: ManualStatus;
   chunkCount: number;
   robotModel: string | null;
@@ -27,6 +28,7 @@ export type ManualDocument = {
   lastError: string | null;
   uploadedByUserId: number;
   uploadedByEmail: string;
+  processingStartedAt: string | null;
   indexedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -39,6 +41,7 @@ export type UploadManualInput = {
   controllerVersion?: string;
   documentLanguage?: DocumentLanguage;
   notes?: string;
+  asNewVersion?: boolean;
 };
 
 export type UpdateManualInput = {
@@ -67,6 +70,11 @@ export type ManualReviewSummary = {
   updatedAt: string;
 };
 
+export type StaleProcessingCleanupResult = {
+  recovered: number;
+  manualIds: number[];
+};
+
 // ── API response shapes ────────────────────────────────────────────
 
 type AdminStatusApiResponse = {
@@ -82,6 +90,7 @@ type ManualApiResponse = {
   storage_key: string;
   content_type: string;
   size_bytes: number;
+  sha256: string | null;
   status: ManualStatus;
   chunk_count: number;
   robot_model: string | null;
@@ -91,6 +100,7 @@ type ManualApiResponse = {
   last_error: string | null;
   uploaded_by_user_id: number;
   uploaded_by_email: string;
+  processing_started_at: string | null;
   indexed_at: string | null;
   created_at: string;
   updated_at: string;
@@ -127,6 +137,11 @@ type ManualReviewSummaryListApiResponse = {
   total: number;
 };
 
+type StaleProcessingCleanupApiResponse = {
+  recovered: number;
+  manual_ids: number[];
+};
+
 // ── Normalizers ────────────────────────────────────────────────────
 
 function normalizeAdminStatus(raw: AdminStatusApiResponse): AdminStatus {
@@ -145,6 +160,7 @@ function normalizeManual(raw: ManualApiResponse): ManualDocument {
     storageKey: raw.storage_key,
     contentType: raw.content_type,
     sizeBytes: raw.size_bytes,
+    sha256: raw.sha256,
     status: raw.status,
     chunkCount: raw.chunk_count,
     robotModel: raw.robot_model,
@@ -154,6 +170,7 @@ function normalizeManual(raw: ManualApiResponse): ManualDocument {
     lastError: raw.last_error,
     uploadedByUserId: raw.uploaded_by_user_id,
     uploadedByEmail: raw.uploaded_by_email,
+    processingStartedAt: raw.processing_started_at,
     indexedAt: raw.indexed_at,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
@@ -235,6 +252,9 @@ export async function uploadManual(
   if (input.notes?.trim()) {
     formData.set("notes", input.notes.trim());
   }
+  if (input.asNewVersion) {
+    formData.set("as_new_version", "true");
+  }
 
   const raw = await api.postFormData<ManualApiResponse>(
     "/api/v1/manuals",
@@ -264,6 +284,30 @@ export async function deleteManual(manualId: number): Promise<void> {
     `/api/v1/manuals/${manualId}`,
     "No fue posible eliminar el manual.",
   );
+}
+
+export async function retryManual(manualId: number): Promise<ManualDocument> {
+  const raw = await api.post<ManualApiResponse>(
+    `/api/v1/manuals/${manualId}/retry`,
+    undefined,
+    "No fue posible reintentar el manual.",
+  );
+  return normalizeManual(raw);
+}
+
+export async function cleanupStaleProcessing(
+  olderThanMinutes: number = 10,
+): Promise<StaleProcessingCleanupResult> {
+  const raw = await api.post<StaleProcessingCleanupApiResponse>(
+    `/api/v1/manuals/cleanup-stale-processing?older_than_minutes=${olderThanMinutes}`,
+    undefined,
+    "No fue posible limpiar manuales atascados.",
+  );
+
+  return {
+    recovered: raw.recovered,
+    manualIds: raw.manual_ids,
+  };
 }
 
 export function getManualOpenUrl(manualId: number): string {

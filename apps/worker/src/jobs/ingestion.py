@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import signal
+from contextlib import contextmanager
 from datetime import UTC, datetime
+from math import ceil
 from time import sleep
 
 from sqlalchemy import delete, select
@@ -22,6 +25,47 @@ from src.services.semantic_review import (
 )
 from src.services.storage import ManualStorageService, get_manual_storage_service
 from src.utils.logging import log
+
+
+class ManualProcessingTimeoutError(TimeoutError):
+    pass
+
+
+def calculate_manual_timeout_seconds(manual: Manual) -> int:
+    base_timeout = max(1, settings.worker_manual_timeout_seconds)
+    base_coverage_mb = max(1, settings.worker_manual_timeout_base_coverage_mb)
+    extra_per_mb = max(0, settings.worker_manual_timeout_extra_per_mb_seconds)
+    max_timeout = max(base_timeout, settings.worker_manual_timeout_max_seconds)
+
+    size_bytes = max(0, int(manual.size_bytes or 0))
+    if size_bytes == 0 or extra_per_mb == 0:
+        return min(base_timeout, max_timeout)
+
+    size_mb = ceil(size_bytes / float(1024 * 1024))
+    extra_mb = max(0, size_mb - base_coverage_mb)
+    computed_timeout = base_timeout + (extra_mb * extra_per_mb)
+    return min(computed_timeout, max_timeout)
+
+
+@contextmanager
+def manual_processing_timeout(timeout_seconds: int):
+    if timeout_seconds <= 0 or not hasattr(signal, "SIGALRM"):
+        yield
+        return
+
+    def _handle_alarm(_signum, _frame):
+        raise ManualProcessingTimeoutError(
+            f"Tiempo maximo de procesamiento excedido ({timeout_seconds}s)."
+        )
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    signal.signal(signal.SIGALRM, _handle_alarm)
+    signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
 
 
 def _append_reason(reason: str | None, suffix: str) -> str:
@@ -134,6 +178,7 @@ def claim_next_pending_manual(session: Session) -> Manual | None:
     manual.status = "processing"
     manual.last_error = None
     manual.chunk_count = 0
+    manual.processing_started_at = datetime.now(UTC)
     manual.indexed_at = None
     session.add(manual)
     session.commit()
@@ -234,6 +279,18 @@ def build_chunk_review_observations(
     if not selections:
         return []
 
+    max_reviews = settings.semantic_review_max_reviews_per_manual
+    if max_reviews > 0 and len(selections) > max_reviews:
+        _REVIEW_PRIORITY: dict[str, int] = {
+            "suspicious_boundary": 0,
+            "too_long": 1,
+            "sampled": 2,
+            "too_short": 3,
+        }
+        selections.sort(key=lambda s: _REVIEW_PRIORITY.get(s.reason, 99))
+        selections = selections[:max_reviews]
+        selections.sort(key=lambda s: s.chunk_index)
+
     selected_by_index = {selection.chunk_index: selection for selection in selections}
     review_results: list[ChunkReviewResult] = []
 
@@ -272,6 +329,29 @@ def mark_manual_failed(session: Session, manual_id: int, reason: str) -> None:
     session.commit()
 
 
+def recover_stuck_processing_manuals(
+    session_factory: sessionmaker[Session] = SessionLocal,
+) -> int:
+    with session_factory() as session:
+        stuck_manuals = list(
+            session.scalars(select(Manual).where(Manual.status == "processing"))
+        )
+
+        if not stuck_manuals:
+            return 0
+
+        for manual in stuck_manuals:
+            manual.status = "pending"
+            manual.chunk_count = 0
+            manual.processing_started_at = None
+            manual.indexed_at = None
+            manual.last_error = "Reencolado automaticamente tras reinicio del worker."
+            session.add(manual)
+
+        session.commit()
+        return len(stuck_manuals)
+
+
 def process_next_pending_manual(
     session_factory: sessionmaker[Session] = SessionLocal,
     storage_service: ManualStorageService | None = None,
@@ -288,35 +368,41 @@ def process_next_pending_manual(
         log("worker", f"Procesando manual #{manual.id}: {manual.title}")
 
         try:
-            content = storage.download_manual(manual.storage_key)
-            page_texts = extract_pdf_text_by_page(content)
-            chunks = build_text_chunks(page_texts)
+            timeout_seconds = calculate_manual_timeout_seconds(manual)
+            with manual_processing_timeout(timeout_seconds):
+                content = storage.download_manual(manual.storage_key)
+                page_texts = extract_pdf_text_by_page(content)
+                chunks = build_text_chunks(page_texts)
 
-            if not chunks:
-                raise ValueError("No se pudo extraer texto util del PDF.")
+                if not chunks:
+                    raise ValueError("No se pudo extraer texto util del PDF.")
 
-            review_results = build_chunk_review_observations(manual, chunks, reviewer)
-            fixed_chunks, applied_autofixes = apply_safe_chunk_autofixes(
-                chunks, review_results
-            )
+                review_results = build_chunk_review_observations(
+                    manual, chunks, reviewer
+                )
+                fixed_chunks, applied_autofixes = apply_safe_chunk_autofixes(
+                    chunks, review_results
+                )
 
-            summary = build_review_metrics_summary(
-                manual_id=manual.id,
-                initial_chunk_count=len(chunks),
-                final_chunk_count=len(fixed_chunks),
-                review_results=review_results,
-                applied_autofixes=applied_autofixes,
-            )
-            index_manual_chunks(session, manual, fixed_chunks, review_results, summary)
-            log(
-                "worker",
-                (
-                    f"Manual #{manual.id} indexado con {len(fixed_chunks)} chunks, "
-                    f"{len(review_results)} revisiones semanticas y "
-                    f"{applied_autofixes} auto-fixes. costo_estimado=${summary.estimated_cost_usd:.6f}"
-                ),
-            )
-            return True
+                summary = build_review_metrics_summary(
+                    manual_id=manual.id,
+                    initial_chunk_count=len(chunks),
+                    final_chunk_count=len(fixed_chunks),
+                    review_results=review_results,
+                    applied_autofixes=applied_autofixes,
+                )
+                index_manual_chunks(
+                    session, manual, fixed_chunks, review_results, summary
+                )
+                log(
+                    "worker",
+                    (
+                        f"Manual #{manual.id} indexado con {len(fixed_chunks)} chunks, "
+                        f"{len(review_results)} revisiones semanticas y "
+                        f"{applied_autofixes} auto-fixes. costo_estimado=${summary.estimated_cost_usd:.6f}"
+                    ),
+                )
+                return True
         except Exception as exc:
             session.rollback()
             reason = str(exc) or "Error no identificado durante la ingesta."
@@ -331,8 +417,16 @@ def run_worker_loop(
     poll_interval_seconds: int | None = None,
 ) -> None:
     initialize_database()
+    recovered_count = 0
+    if session_factory is not None:
+        recovered_count = recover_stuck_processing_manuals(session_factory)
     interval = poll_interval_seconds or settings.worker_poll_interval_seconds
     log("worker", "Worker RC7 iniciado. Esperando trabajos de ingesta...")
+    if recovered_count > 0:
+        log(
+            "worker",
+            f"Se reencolaron {recovered_count} manual(es) que quedaron en processing.",
+        )
 
     while True:
         processed = process_next_pending_manual(session_factory, storage_service)

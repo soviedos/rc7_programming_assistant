@@ -243,6 +243,88 @@ def test_manual_upload_rejects_non_pdf_files(
     assert response.json()["detail"] == "Solo se permiten archivos PDF."
 
 
+def test_manual_upload_rejects_duplicate_sha256_without_new_version_flag(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    fake_storage = FakeManualStorageService()
+    client.app.dependency_overrides[get_manual_storage_service] = lambda: fake_storage
+
+    try:
+        create_user(
+            db_session,
+            email="admin@ucenfotec.ac.cr",
+            password="1234ABC",
+            roles=["admin", "user"],
+        )
+        login(client, "admin@ucenfotec.ac.cr", "1234ABC")
+
+        first_response = client.post(
+            "/api/v1/manuals",
+            data={"title": "Manual base"},
+            files={"file": ("manual.pdf", b"%PDF-1.4 duplicate", "application/pdf")},
+        )
+        assert first_response.status_code == 201
+
+        duplicate_response = client.post(
+            "/api/v1/manuals",
+            data={"title": "Manual duplicado"},
+            files={
+                "file": ("manual-copy.pdf", b"%PDF-1.4 duplicate", "application/pdf")
+            },
+        )
+
+        assert duplicate_response.status_code == 409
+        assert "mismo SHA-256" in duplicate_response.json()["detail"]
+
+        all_manuals = list(db_session.scalars(select(Manual)))
+        assert len(all_manuals) == 1
+    finally:
+        client.app.dependency_overrides.pop(get_manual_storage_service, None)
+
+
+def test_manual_upload_allows_duplicate_sha256_as_new_version(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    fake_storage = FakeManualStorageService()
+    client.app.dependency_overrides[get_manual_storage_service] = lambda: fake_storage
+
+    try:
+        create_user(
+            db_session,
+            email="admin@ucenfotec.ac.cr",
+            password="1234ABC",
+            roles=["admin", "user"],
+        )
+        login(client, "admin@ucenfotec.ac.cr", "1234ABC")
+
+        first_response = client.post(
+            "/api/v1/manuals",
+            data={"title": "Manual base"},
+            files={"file": ("manual.pdf", b"%PDF-1.4 duplicate", "application/pdf")},
+        )
+        assert first_response.status_code == 201
+        first_manual_id = first_response.json()["id"]
+
+        second_response = client.post(
+            "/api/v1/manuals",
+            data={"title": "Manual base v2", "as_new_version": "true"},
+            files={
+                "file": ("manual-copy.pdf", b"%PDF-1.4 duplicate", "application/pdf")
+            },
+        )
+
+        assert second_response.status_code == 201
+        assert second_response.json()["id"] != first_manual_id
+        assert "SHA-256 duplicado" in (second_response.json()["notes"] or "")
+
+        all_manuals = list(db_session.scalars(select(Manual)))
+        assert len(all_manuals) == 2
+    finally:
+        client.app.dependency_overrides.pop(get_manual_storage_service, None)
+
+
 def test_manual_update_open_and_delete_flow(
     client: TestClient, db_session: Session
 ) -> None:
@@ -435,3 +517,327 @@ def test_manual_review_summaries_are_listed_for_admin(
     assert payload["items"][0]["manual_id"] == manual.id
     assert payload["items"][0]["reviewed_count"] == 2
     assert payload["items"][0]["estimated_cost_usd"] == 0.0123
+
+
+def test_manual_retry_resets_state_and_cleans_previous_artifacts(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    admin = create_user(
+        db_session,
+        email="admin@ucenfotec.ac.cr",
+        password="1234ABC",
+        roles=["admin", "user"],
+    )
+    login(client, "admin@ucenfotec.ac.cr", "1234ABC")
+
+    manual = Manual(
+        title="Manual con fallo",
+        original_filename="failed.pdf",
+        storage_key="manuals/2026/04/20/failed.pdf",
+        content_type="application/pdf",
+        size_bytes=150,
+        status="failed",
+        chunk_count=5,
+        robot_model="VP-6242",
+        controller_version="RC7",
+        document_language="es",
+        notes=None,
+        last_error="The read operation timed out",
+        uploaded_by_user_id=admin.id,
+        uploaded_by_email=admin.email,
+    )
+    db_session.add(manual)
+    db_session.commit()
+    db_session.refresh(manual)
+
+    db_session.add(
+        ManualChunk(
+            manual_id=manual.id,
+            chunk_index=0,
+            page_number=1,
+            text="MOVE P, HOME",
+        )
+    )
+    db_session.add(
+        ManualChunkReview(
+            manual_id=manual.id,
+            chunk_index=0,
+            page_number=1,
+            review_status="error",
+            selected_reason="sampled",
+            action="keep",
+            reviewer_model="gemini-2.5-flash",
+            reason="timeout",
+        )
+    )
+    db_session.add(
+        ManualReviewSummary(
+            manual_id=manual.id,
+            initial_chunk_count=1,
+            final_chunk_count=1,
+            reviewed_count=0,
+            skipped_count=0,
+            error_count=1,
+            merge_actions=0,
+            split_actions=0,
+            keep_actions=1,
+            regenerate_actions=0,
+            applied_autofixes=0,
+            estimated_input_tokens=120,
+            estimated_output_tokens=20,
+            estimated_cost_usd=0.001,
+        )
+    )
+    db_session.commit()
+
+    response = client.post(f"/api/v1/manuals/{manual.id}/retry")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "pending"
+    assert payload["chunk_count"] == 0
+    assert payload["last_error"] is None
+    assert payload["indexed_at"] is None
+
+    db_session.expire_all()
+    retried = db_session.get(Manual, manual.id)
+    assert retried is not None
+    assert retried.status == "pending"
+    assert retried.chunk_count == 0
+    assert retried.last_error is None
+    assert retried.indexed_at is None
+    assert (
+        db_session.scalar(select(ManualChunk).where(ManualChunk.manual_id == manual.id))
+        is None
+    )
+    assert (
+        db_session.scalar(
+            select(ManualChunkReview).where(ManualChunkReview.manual_id == manual.id)
+        )
+        is None
+    )
+    assert (
+        db_session.scalar(
+            select(ManualReviewSummary).where(
+                ManualReviewSummary.manual_id == manual.id
+            )
+        )
+        is None
+    )
+
+
+def test_manual_retry_rejects_indexed_manual(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    admin = create_user(
+        db_session,
+        email="admin@ucenfotec.ac.cr",
+        password="1234ABC",
+        roles=["admin", "user"],
+    )
+    login(client, "admin@ucenfotec.ac.cr", "1234ABC")
+
+    manual = Manual(
+        title="Manual indexado",
+        original_filename="indexed.pdf",
+        storage_key="manuals/2026/04/20/indexed.pdf",
+        content_type="application/pdf",
+        size_bytes=100,
+        status="indexed",
+        chunk_count=12,
+        robot_model="VP-6242",
+        controller_version="RC7",
+        document_language="es",
+        notes=None,
+        uploaded_by_user_id=admin.id,
+        uploaded_by_email=admin.email,
+    )
+    db_session.add(manual)
+    db_session.commit()
+    db_session.refresh(manual)
+
+    response = client.post(f"/api/v1/manuals/{manual.id}/retry")
+
+    assert response.status_code == 409
+    assert "ya esta indexado" in response.json()["detail"]
+
+
+def test_manual_retry_rejects_processing_manual(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    admin = create_user(
+        db_session,
+        email="admin@ucenfotec.ac.cr",
+        password="1234ABC",
+        roles=["admin", "user"],
+    )
+    login(client, "admin@ucenfotec.ac.cr", "1234ABC")
+
+    manual = Manual(
+        title="Manual en proceso",
+        original_filename="processing.pdf",
+        storage_key="manuals/2026/04/20/processing.pdf",
+        content_type="application/pdf",
+        size_bytes=100,
+        status="processing",
+        chunk_count=0,
+        robot_model="VP-6242",
+        controller_version="RC7",
+        document_language="es",
+        notes=None,
+        uploaded_by_user_id=admin.id,
+        uploaded_by_email=admin.email,
+    )
+    db_session.add(manual)
+    db_session.commit()
+    db_session.refresh(manual)
+
+    response = client.post(f"/api/v1/manuals/{manual.id}/retry")
+
+    assert response.status_code == 409
+    assert "sigue en analisis" in response.json()["detail"]
+
+
+# ── cleanup-stale-processing ────────────────────────────────────────────────
+
+
+def test_cleanup_stale_processing_requeues_old_processing_manuals(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    admin = create_user(
+        db_session,
+        email="admin@ucenfotec.ac.cr",
+        password="1234ABC",
+        roles=["admin", "user"],
+    )
+    login(client, "admin@ucenfotec.ac.cr", "1234ABC")
+
+    stale_manual = Manual(
+        title="Manual atascado",
+        original_filename="stale.pdf",
+        storage_key="manuals/2026/04/20/stale.pdf",
+        content_type="application/pdf",
+        size_bytes=100,
+        status="processing",
+        chunk_count=0,
+        robot_model="VP-6242",
+        controller_version="RC7",
+        document_language="es",
+        uploaded_by_user_id=admin.id,
+        uploaded_by_email=admin.email,
+    )
+    db_session.add(stale_manual)
+    db_session.commit()
+    db_session.refresh(stale_manual)
+
+    # Simulate manual stuck for 20 minutes
+    db_session.execute(
+        __import__("sqlalchemy").text(
+            "UPDATE manuals SET updated_at = :ts WHERE id = :id"
+        ),
+        {"ts": datetime.now(UTC) - timedelta(minutes=20), "id": stale_manual.id},
+    )
+    db_session.commit()
+
+    response = client.post(
+        "/api/v1/manuals/cleanup-stale-processing?older_than_minutes=10"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recovered"] == 1
+    assert stale_manual.id in payload["manual_ids"]
+
+    db_session.expire_all()
+    refreshed = db_session.get(Manual, stale_manual.id)
+    assert refreshed is not None
+    assert refreshed.status == "pending"
+    assert "reencolado por limpieza" in (refreshed.last_error or "").lower()
+
+
+def test_cleanup_stale_processing_ignores_recent_processing_manuals(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    admin = create_user(
+        db_session,
+        email="admin@ucenfotec.ac.cr",
+        password="1234ABC",
+        roles=["admin", "user"],
+    )
+    login(client, "admin@ucenfotec.ac.cr", "1234ABC")
+
+    recent_manual = Manual(
+        title="Manual reciente",
+        original_filename="recent.pdf",
+        storage_key="manuals/2026/04/20/recent.pdf",
+        content_type="application/pdf",
+        size_bytes=100,
+        status="processing",
+        chunk_count=0,
+        robot_model="VP-6242",
+        controller_version="RC7",
+        document_language="es",
+        uploaded_by_user_id=admin.id,
+        uploaded_by_email=admin.email,
+    )
+    db_session.add(recent_manual)
+    db_session.commit()
+
+    # updated_at is fresh (just now) — within the 10-min threshold
+    response = client.post(
+        "/api/v1/manuals/cleanup-stale-processing?older_than_minutes=10"
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recovered"] == 0
+    assert payload["manual_ids"] == []
+
+    db_session.expire_all()
+    refreshed = db_session.get(Manual, recent_manual.id)
+    assert refreshed is not None
+    assert refreshed.status == "processing"
+
+
+def test_cleanup_stale_processing_returns_empty_when_no_processing_manuals(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    create_user(
+        db_session,
+        email="admin@ucenfotec.ac.cr",
+        password="1234ABC",
+        roles=["admin", "user"],
+    )
+    login(client, "admin@ucenfotec.ac.cr", "1234ABC")
+
+    response = client.post("/api/v1/manuals/cleanup-stale-processing")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recovered"] == 0
+    assert payload["manual_ids"] == []
+
+
+def test_cleanup_stale_processing_rejects_non_admin(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    create_user(
+        db_session,
+        email="user@ucenfotec.ac.cr",
+        password="1234ABC",
+        roles=["user"],
+    )
+    login(client, "user@ucenfotec.ac.cr", "1234ABC")
+
+    response = client.post("/api/v1/manuals/cleanup-stale-processing")
+
+    assert response.status_code == 403

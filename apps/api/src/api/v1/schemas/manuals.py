@@ -16,6 +16,7 @@ class ManualResponse(BaseModel):
     storage_key: str
     content_type: str
     size_bytes: int
+    sha256: str | None
     status: ManualStatus
     chunk_count: int
     robot_model: str | None
@@ -25,6 +26,7 @@ class ManualResponse(BaseModel):
     last_error: str | None
     uploaded_by_user_id: int
     uploaded_by_email: str
+    processing_started_at: datetime | None
     indexed_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -64,3 +66,8 @@ class ManualReviewSummaryResponse(BaseModel):
 class ManualReviewSummaryListResponse(BaseModel):
     items: list[ManualReviewSummaryResponse]
     total: int
+
+
+class StaleProcessingResult(BaseModel):
+    recovered: int
+    manual_ids: list[int]

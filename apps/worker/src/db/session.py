@@ -32,6 +32,7 @@ def ensure_manual_columns() -> None:
     missing_columns = {
         "chunk_count": "INTEGER DEFAULT 0 NOT NULL",
         "last_error": "TEXT",
+        "processing_started_at": "TIMESTAMP",
         "indexed_at": "TIMESTAMP",
     }
 

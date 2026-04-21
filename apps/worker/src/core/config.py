@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     minio_root_password: str = "minioadmin"
     minio_bucket_manuals: str = "rc7-manuals"
     worker_poll_interval_seconds: int = 5
+    worker_manual_timeout_seconds: int = 420
+    worker_manual_timeout_base_coverage_mb: int = 8
+    worker_manual_timeout_extra_per_mb_seconds: int = 30
+    worker_manual_timeout_max_seconds: int = 1800
     gemini_api_key: str = "replace_me"
     gemini_model: str = "gemini-2.0-flash"
     gemini_timeout_seconds: int = 8
@@ -26,6 +30,7 @@ class Settings(BaseSettings):
     semantic_review_split_min_chars: int = 1800
     semantic_review_enabled_languages: str = "es,en"
     semantic_review_title_include_terms: str = ""
+    semantic_review_max_reviews_per_manual: int = 80
     semantic_review_cost_input_per_1k_tokens: float = 0.00025
     semantic_review_cost_output_per_1k_tokens: float = 0.00075
     semantic_review_estimated_output_tokens: int = 120

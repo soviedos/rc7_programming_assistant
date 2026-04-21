@@ -1,12 +1,16 @@
 import pytest
+from contextlib import contextmanager
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.db.models import Manual, ManualChunk, ManualChunkReview, ManualReviewSummary
 from src.chunking.text import TextChunk
 from src.jobs.ingestion import (
+    ManualProcessingTimeoutError,
     apply_safe_chunk_autofixes,
+    calculate_manual_timeout_seconds,
     process_next_pending_manual,
+    recover_stuck_processing_manuals,
     run_worker_loop,
 )
 from src.services.semantic_review import ChunkReviewResult
@@ -65,13 +69,19 @@ class ActionSemanticReviewer:
         )
 
 
-def create_manual(db_session: Session, *, status: str = "pending") -> Manual:
+def create_manual(
+    db_session: Session,
+    *,
+    status: str = "pending",
+    storage_key: str = "manuals/2026/04/20/manual.pdf",
+    size_bytes: int = 128,
+) -> Manual:
     manual = Manual(
         title="RC7 Manual",
         original_filename="manual.pdf",
-        storage_key="manuals/2026/04/20/manual.pdf",
+        storage_key=storage_key,
         content_type="application/pdf",
-        size_bytes=128,
+        size_bytes=size_bytes,
         status=status,
         chunk_count=0,
         robot_model="VP-6242",
@@ -190,6 +200,107 @@ def test_process_next_pending_manual_marks_failure_when_no_text_is_extracted(
             )
             is None
         )
+
+
+def test_process_next_pending_manual_marks_failure_on_timeout(
+    session_factory,
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    manual = create_manual(db_session)
+
+    @contextmanager
+    def fake_timeout(_seconds: int):
+        raise ManualProcessingTimeoutError(
+            "Tiempo maximo de procesamiento excedido (1s)."
+        )
+        yield
+
+    monkeypatch.setattr("src.jobs.ingestion.manual_processing_timeout", fake_timeout)
+
+    processed = process_next_pending_manual(session_factory, FakeStorageService())
+
+    assert processed is True
+
+    with session_factory() as session:
+        refreshed_manual = session.get(Manual, manual.id)
+        assert refreshed_manual is not None
+        assert refreshed_manual.status == "failed"
+        assert (
+            refreshed_manual.last_error
+            == "Tiempo maximo de procesamiento excedido (1s)."
+        )
+
+
+def test_calculate_manual_timeout_seconds_scales_with_pdf_size(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.worker_manual_timeout_seconds", 480
+    )
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.worker_manual_timeout_base_coverage_mb", 8
+    )
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.worker_manual_timeout_extra_per_mb_seconds", 120
+    )
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.worker_manual_timeout_max_seconds", 900
+    )
+
+    tiny_manual = Manual(size_bytes=200_000)
+    medium_manual = Manual(size_bytes=8 * 1024 * 1024)
+    large_manual = Manual(size_bytes=9 * 1024 * 1024)
+    huge_manual = Manual(size_bytes=20 * 1024 * 1024)
+
+    assert calculate_manual_timeout_seconds(tiny_manual) == 480
+    assert calculate_manual_timeout_seconds(medium_manual) == 480
+    assert calculate_manual_timeout_seconds(large_manual) == 600
+    assert calculate_manual_timeout_seconds(huge_manual) == 900
+
+
+def test_recover_stuck_processing_manuals_requeues_processing(
+    session_factory,
+    db_session: Session,
+) -> None:
+    processing_a = create_manual(
+        db_session,
+        status="processing",
+        storage_key="manuals/2026/04/20/manual-a.pdf",
+    )
+    processing_b = create_manual(
+        db_session,
+        status="processing",
+        storage_key="manuals/2026/04/20/manual-b.pdf",
+    )
+    pending_manual = create_manual(
+        db_session,
+        status="pending",
+        storage_key="manuals/2026/04/20/manual-c.pdf",
+    )
+
+    recovered = recover_stuck_processing_manuals(session_factory)
+
+    assert recovered == 2
+
+    with session_factory() as session:
+        refreshed_a = session.get(Manual, processing_a.id)
+        refreshed_b = session.get(Manual, processing_b.id)
+        refreshed_pending = session.get(Manual, pending_manual.id)
+
+        assert refreshed_a is not None
+        assert refreshed_b is not None
+        assert refreshed_pending is not None
+
+        assert refreshed_a.status == "pending"
+        assert refreshed_b.status == "pending"
+        assert (
+            refreshed_a.last_error
+            == "Reencolado automaticamente tras reinicio del worker."
+        )
+        assert (
+            refreshed_b.last_error
+            == "Reencolado automaticamente tras reinicio del worker."
+        )
+        assert refreshed_pending.status == "pending"
 
 
 def test_run_worker_loop_emits_startup_and_heartbeat_when_idle(monkeypatch) -> None:

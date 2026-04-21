@@ -28,6 +28,7 @@ def serialize_manual(manual: Manual) -> ManualResponse:
         storage_key=manual.storage_key,
         content_type=manual.content_type,
         size_bytes=manual.size_bytes,
+        sha256=manual.sha256,
         status=manual.status,  # type: ignore[arg-type]
         chunk_count=manual.chunk_count,
         robot_model=manual.robot_model,
@@ -37,6 +38,7 @@ def serialize_manual(manual: Manual) -> ManualResponse:
         last_error=manual.last_error,
         uploaded_by_user_id=manual.uploaded_by_user_id,
         uploaded_by_email=manual.uploaded_by_email,
+        processing_started_at=manual.processing_started_at,
         indexed_at=manual.indexed_at,
         created_at=manual.created_at,
         updated_at=manual.updated_at,
