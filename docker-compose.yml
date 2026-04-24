@@ -25,6 +25,22 @@ services:
     build:
       context: .
       dockerfile: infra/docker/api.Dockerfile
+    # Use uvicorn directly to expose --timeout-keep-alive (fastapi dev doesn't support it).
+    # --timeout-keep-alive 120: prevents uvicorn from closing keep-alive connections
+    #   before long-running Gemini requests finish (~30-60 s).
+    # --reload-dir /app/src: limit hot-reload scope to source files only.
+    command:
+      - uvicorn
+      - "src.main:app"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8000"
+      - "--reload"
+      - "--reload-dir"
+      - "/app/src"
+      - "--timeout-keep-alive"
+      - "120"
     env_file:
       - .env.example
       - .env
