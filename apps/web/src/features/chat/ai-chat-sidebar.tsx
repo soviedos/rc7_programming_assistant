@@ -18,6 +18,7 @@ export type Message = {
   code?: string;
   references?: MessageReference[];
   timestamp: Date;
+  isError?: boolean;
 };
 
 // ── Sample data ────────────────────────────────────────────────────
@@ -277,6 +278,17 @@ export function AiChatSidebar({
                   <p className="text-[9px] font-semibold text-muted uppercase tracking-wide">Consulta</p>
                   <div className="rounded-lg px-3 py-2 bg-surface-strong text-ink text-[11px] leading-relaxed">
                     {msg.content}
+                  </div>
+                </div>
+              ) : msg.isError ? (
+                /* Error message */
+                <div className="space-y-1 pl-1 border-l-2 border-destructive/40">
+                  <div className="flex items-center gap-1.5 pl-2">
+                    <Bot className="h-3 w-3 text-destructive shrink-0" />
+                    <span className="text-[10px] text-destructive font-medium">Error</span>
+                  </div>
+                  <div className="pl-3 text-[11px] text-destructive/80 leading-relaxed">
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
                   </div>
                 </div>
               ) : (

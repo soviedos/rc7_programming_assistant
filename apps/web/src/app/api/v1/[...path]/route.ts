@@ -7,6 +7,9 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 
+// Allow up to 2 minutes for long-running requests (e.g. Gemini RAG pipeline)
+export const maxDuration = 120;
+
 const INTERNAL_API = process.env.INTERNAL_API_URL ?? "http://api:8000";
 
 async function proxy(req: NextRequest, path: string): Promise<NextResponse> {
@@ -14,6 +17,9 @@ async function proxy(req: NextRequest, path: string): Promise<NextResponse> {
 
   const headers: Record<string, string> = {
     "Content-Type": req.headers.get("content-type") ?? "application/json",
+    // Prevent undici connection-pool reuse so uvicorn's keep-alive timeout
+    // doesn't cause "socket hang up" on long-running requests (e.g. Gemini).
+    "Connection": "close",
   };
 
   // Forward session cookie so the FastAPI auth middleware can read it

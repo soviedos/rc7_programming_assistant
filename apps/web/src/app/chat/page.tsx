@@ -63,6 +63,7 @@ export default function ChatPage() {
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
+        isError: true,
         content:
           err instanceof Error
             ? err.message
@@ -73,6 +74,10 @@ export default function ChatPage() {
     } finally {
       setIsSending(false);
     }
+  }
+
+  function handleClear() {
+    setMessages([]);
   }
 
   function handleHistoryItemClick(item: ChatHistoryItem) {
@@ -118,6 +123,7 @@ export default function ChatPage() {
             onModeChange={setMode}
             messages={messages}
             onSend={handleSend}
+            onClear={handleClear}
             isSending={isSending}
             config={config}
             sidebarOpen={sidebarOpen}

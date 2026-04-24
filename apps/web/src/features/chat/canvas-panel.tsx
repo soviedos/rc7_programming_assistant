@@ -11,6 +11,7 @@ import {
   PanelRight,
   Send,
   Loader2,
+  SquarePen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROBOT_SPECS, CONTROLLERS } from "./history-sidebar";
@@ -181,6 +182,7 @@ type CanvasPanelProps = {
   onModeChange: (m: WorkspaceMode) => void;
   messages: Message[];
   onSend: (text: string, currentCode: string) => void;
+  onClear: () => void;
   isSending?: boolean;
   config: ChatConfig;
   sidebarOpen: boolean;
@@ -200,6 +202,7 @@ export function CanvasPanel({
   onModeChange,
   messages,
   onSend,
+  onClear,
   isSending = false,
   config,
   sidebarOpen,
@@ -293,6 +296,15 @@ export function CanvasPanel({
             {label}
           </button>
         ))}
+        <button
+          onClick={onClear}
+          disabled={messages.length === 0 || isSending}
+          className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-ink hover:bg-surface-hover rounded-md transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          aria-label="Nueva consulta"
+        >
+          <SquarePen className="h-3.5 w-3.5" />
+          Nueva consulta
+        </button>
       </div>
 
       {/* Canvas content */}
