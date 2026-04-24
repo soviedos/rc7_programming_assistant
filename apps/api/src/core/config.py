@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     minio_root_password: str = "minioadmin"
     minio_bucket_manuals: str = "rc7-manuals"
     gemini_api_key: str = "replace_me"
+    gemini_timeout_seconds: int = 300
 
     model_config = SettingsConfigDict(
         env_file=".env",

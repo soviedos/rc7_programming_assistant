@@ -26,7 +26,14 @@ _MAX_CTX_CHARS = 12_000  # character budget for context passed to Gemini
 
 
 def _get_client() -> genai.Client:
-    return genai.Client(api_key=settings.gemini_api_key)
+    import httpx
+
+    return genai.Client(
+        api_key=settings.gemini_api_key,
+        http_options=types.HttpOptions(
+            timeout=settings.gemini_timeout_seconds * 1000,  # SDK expects ms
+        ),
+    )
 
 
 def _embed_query(text_input: str) -> list[float]:
@@ -185,6 +192,10 @@ def _call_gemini(
                 contents=message,
                 config=config,
             )
+            if resp.text is None:
+                raise RuntimeError(
+                    "Gemini devolvió una respuesta vacía (posible bloqueo de contenido o respuesta incompleta)."
+                )
             return resp.text
         except Exception as exc:
             last_exc = exc
@@ -212,14 +223,21 @@ def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
              has no embeddings yet, Phase 1's answer is parsed directly.
     """
     # ── Phase 1: Direct Gemini call (no RAG) ──────────────────────
+    # Use a simplified system prompt (no JSON format) so the answer reads
+    # as natural prose — this produces much better embeddings for HyDE retrieval.
     system_prompt = _build_system_prompt(payload)
+    phase1_system = (
+        "Eres un experto programador de robots industriales Denso RC7. "
+        "Responde en español de forma técnica y detallada. "
+        "Puedes incluir fragmentos de código PAC si son relevantes."
+    )
     phase1_message = payload.prompt
     if payload.current_code.strip():
         phase1_message = (
             f"CÓDIGO PAC ACTUAL EN EL CANVAS:\n```pac\n{payload.current_code}\n```\n\n"
             f"CONSULTA DEL USUARIO:\n{payload.prompt}"
         )
-    initial_answer = _call_gemini(phase1_message, system_instruction=system_prompt)
+    initial_answer = _call_gemini(phase1_message, system_instruction=phase1_system)
 
     # ── Phase 2: Embed (query + initial answer) → retrieve chunks ─
     embed_input = f"{payload.prompt}\n{initial_answer[:600]}"

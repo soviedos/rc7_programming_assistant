@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Request, status
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from src.api.v1.deps import DbSession, get_current_user
 from src.api.v1.schemas.chat import (
@@ -32,7 +32,7 @@ def _serialize_history_item(item: ChatHistory) -> ChatHistoryItemResponse:
 
 
 @router.post("/generate", response_model=ChatResponse)
-async def generate_code(
+def generate_code(
     request: Request,
     payload: ChatRequest,
     db: DbSession,
@@ -45,6 +45,11 @@ async def generate_code(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Error inesperado al procesar la consulta: {exc}",
         ) from exc
 
     # Persist to chat history
@@ -73,6 +78,21 @@ async def generate_code(
         entry_type=entry_type,
     )
     db.add(history_item)
+    db.commit()
+
+    # Keep only the 50 most recent entries for this user
+    keep_ids = (
+        select(ChatHistory.id)
+        .where(ChatHistory.user_id == user.id)
+        .order_by(ChatHistory.created_at.desc())
+        .limit(50)
+        .scalar_subquery()
+    )
+    db.execute(
+        delete(ChatHistory)
+        .where(ChatHistory.user_id == user.id)
+        .where(ChatHistory.id.not_in(keep_ids))
+    )
     db.commit()
 
     return result
