@@ -37,9 +37,17 @@ Implementa firma y lectura de cookies de sesión con JWT (HttpOnly, Secure en pr
 
 | Endpoint | Método | Descripción |
 |---|---|---|
-| `/api/v1/chat/generate` | `POST` | Generación de respuesta del asistente |
+| `/api/v1/chat/generate` | `POST` | Generación de respuesta RAG con Gemini |
+| `/api/v1/chat/history` | `GET` | Historial de conversaciones del usuario |
 
-Actualmente expone un contrato placeholder que devuelve resumen, código PAC y referencias. Pendiente de integración con Gemini y retrieval.
+Implementa un pipeline RAG en dos fases:
+1. **Fase 1 (HyDE):** consulta directa a Gemini con prompt simplificado para generar una respuesta hipotética que sirve como base de recuperación.
+2. **Fase 2 (RAG):** embedding de `(consulta + respuesta_fase1)` → recuperación de chunks relevantes → respuesta final con contexto documental.
+
+Comportamiento adicional:
+- El historial por usuario se poda automáticamente a las 50 entradas más recientes.
+- Timeout configurable vía `GEMINI_TIMEOUT_SECONDS` (default: 300 s).
+- Manejo de errores con respuesta HTTP 503 ante fallos del pipeline.
 
 ### `admin`
 
