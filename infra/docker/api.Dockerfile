@@ -9,10 +9,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends libpq5 && rm -r
 
 COPY apps/api/pyproject.toml ./
 COPY apps/api/src ./src
-COPY apps/api/tests ./tests
 
-RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -e .[dev]
+RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -e .
 
 EXPOSE 8000
 
-CMD ["fastapi", "dev", "src/main.py", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--timeout-keep-alive", "120"]
