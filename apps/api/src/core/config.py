@@ -50,6 +50,8 @@ class Settings(BaseSettings):
             errors.append("POSTGRES_PASSWORD must not use a default/weak value")
         if self.minio_root_password in _WEAK_PASSWORDS:
             errors.append("MINIO_ROOT_PASSWORD must not use a default/weak value")
+        if self.bootstrap_admin_password in _WEAK_PASSWORDS:
+            errors.append("BOOTSTRAP_ADMIN_PASSWORD must not be empty or a default value")
         if any("localhost" in o or "127.0.0.1" in o for o in self.cors_origins):
             errors.append("CORS_ORIGINS must not contain localhost in production")
         if errors:

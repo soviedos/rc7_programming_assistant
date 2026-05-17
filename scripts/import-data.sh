@@ -45,7 +45,7 @@ echo "PostgreSQL DB    : ${POSTGRES_DB} (user: ${POSTGRES_USER})"
 echo ""
 
 # ─── Create required directories ─────────────────────────────────────────────
-mkdir -p logs/api logs/worker infra/nginx/ssl
+mkdir -p infra/nginx/ssl
 
 # ─── Start only infrastructure services ──────────────────────────────────────
 echo "▶ Starting infrastructure (postgres, redis, minio)..."

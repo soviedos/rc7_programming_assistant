@@ -6,11 +6,21 @@ Configuración del reverse proxy para servir frontend y backend bajo un punto de
 
 ## Estado
 
-Pendiente de implementación. Se utilizará cuando el proyecto requiera un dominio unificado o terminación TLS en el entorno de despliegue.
+Implementado. Ver [`nginx.conf`](./nginx.conf).
 
-## Uso previsto
+## Funcionalidad
 
-- Proxy inverso para `web` (`:3000`) y `api` (`:8000`)
-- Terminación TLS
-- Compresión de assets estáticos
-- Headers de seguridad
+- HTTP → HTTPS redirect (301)
+- Proxy inverso hacia `web:3000` (Next.js maneja internamente el proxy a la API)
+- Terminación TLS con certificados en `infra/nginx/ssl/`
+- Headers de seguridad (HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy)
+- Compresión gzip para assets estáticos
+- Timeout extendido (130 s) para peticiones largas del pipeline Gemini
+
+## Uso
+
+Incluido como servicio en `docker-compose.prod.yml`. Requiere:
+- `infra/nginx/ssl/fullchain.pem`
+- `infra/nginx/ssl/privkey.pem`
+
+Ver [docs/operations/deployment.md](../../docs/operations/deployment.md) para instrucciones de obtención de certificados.

@@ -61,7 +61,7 @@ services:
     env_file:
       - .env
     volumes:
-      - ./logs/api:/app/logs
+      - api_logs:/app/logs
     expose:
       - "8000"
     depends_on:
@@ -92,7 +92,7 @@ services:
     env_file:
       - .env
     volumes:
-      - ./logs/worker:/app/logs
+      - worker_logs:/app/logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -163,3 +163,5 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
+  api_logs:
+  worker_logs:
