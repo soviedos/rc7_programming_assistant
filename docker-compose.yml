@@ -14,11 +14,14 @@ services:
       api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000"]
+      # Verify the proxy route works, not just that Next.js is up.
+      # A stale Turbopack cache can leave Next.js responding 200 on /
+      # while /api/v1/* returns 404.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/v1/health/"]
       interval: 10s
       timeout: 10s
       retries: 10
-      start_period: 25s
+      start_period: 60s
     restart: unless-stopped
 
   api:
@@ -46,6 +49,7 @@ services:
       - .env
     volumes:
       - ./apps/api:/app
+      - ./logs/api:/app/logs
     ports:
       - "8000:8000"
     depends_on:
@@ -78,6 +82,7 @@ services:
       - .env
     volumes:
       - ./apps/worker:/app
+      - ./logs/worker:/app/logs
     depends_on:
       postgres:
         condition: service_healthy

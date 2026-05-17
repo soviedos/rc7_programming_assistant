@@ -10,4 +10,6 @@ COPY apps/web ./
 
 EXPOSE 3000
 
-CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0"]
+# Clear Turbopack's incremental cache on every container start to prevent
+# stale compiled route handlers (e.g. catch-all proxy returning 404).
+CMD ["sh", "-c", "rm -rf .next && npm run dev -- --hostname 0.0.0.0"]
