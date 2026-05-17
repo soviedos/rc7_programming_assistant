@@ -75,21 +75,32 @@ jobs:
           host: ${{ secrets.SERVER_HOST }}
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # SERVER_WORKDIR: absolute path to the project on the server
-          # ENV_PROD: full contents of the production .env file
+          # SERVER_WORKDIR: absolute path to the project on the server.
+          # The .env file must already exist on the server with chmod 600.
+          # It is NEVER written or overwritten by this workflow; manage it
+          # manually (scp / ansible / first-time setup) to avoid fragile
+          # multiline-secret expansion and to preserve intentional overrides.
           script: |
             set -e
             cd "${{ secrets.SERVER_WORKDIR }}"
 
-            git pull origin main
+            # Abort early if production env is missing — do not start a broken stack
+            if [[ ! -f .env ]]; then
+              echo "ERROR: .env not found at ${{ secrets.SERVER_WORKDIR }}/.env" >&2
+              echo "Set it up once with: scp .env.prod.example user@host:$(pwd)/.env && chmod 600 .env" >&2
+              exit 1
+            fi
 
-            # Write production env (never stored in the repo)
-            printf '%s' "${{ secrets.ENV_PROD }}" > .env
+            git pull origin main
 
             # Build and start; --wait blocks until all healthchecks pass
             docker compose -f docker-compose.prod.yml up -d --build --wait --wait-timeout 120
 
-            # Final status check — fails the step if any service is not running
-            docker compose -f docker-compose.prod.yml ps --filter "status=running"
+            # Rollback if any service is unhealthy after the timeout
+            if ! docker compose -f docker-compose.prod.yml ps --filter "status=running" | grep -q "running"; then
+              echo "ERROR: one or more services failed to start. Rolling back..." >&2
+              docker compose -f docker-compose.prod.yml down
+              exit 1
+            fi
 
             echo "Deploy complete"
