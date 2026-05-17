@@ -16,23 +16,25 @@
 #
 # Prerequisites:
 #   - .env file with production values in the project root
-#   - docker-compose.prod.yml stack running
+#   - docker-compose.prod.yml stack running (override with COMPOSE_FILE env var)
 #   - Docker available to the user running this script
 
 set -euo pipefail
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 BACKUP_KEEP_DAYS="${BACKUP_KEEP_DAYS:-7}"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
 BACKUP_ROOT="$(pwd)/backups"
 TIMESTAMP="$(date '+%Y-%m-%d_%H-%M-%S')"
 BACKUP_DIR="${BACKUP_ROOT}/${TIMESTAMP}"
 
 # ─── Load env vars ────────────────────────────────────────────────────────────
 if [[ -f .env ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source .env
-  set +a
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    # Skip blank lines and comments
+    [[ -z "${line//[[:space:]]/}" || "$line" == \#* ]] && continue
+    export "$line"
+  done < .env
 fi
 
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
@@ -46,8 +48,8 @@ die() { echo "[ERROR] $*" >&2; exit 1; }
 command -v docker > /dev/null 2>&1 || die "docker not found"
 
 # Verify the postgres container is running
-docker compose -f docker-compose.prod.yml ps postgres \
-  | grep -q "running" || die "postgres container is not running"
+docker compose -f "${COMPOSE_FILE}" ps postgres \
+  | grep -qE "(Up|running)" || die "postgres container is not running"
 
 # ─── Create backup directory ──────────────────────────────────────────────────
 mkdir -p "${BACKUP_DIR}"
@@ -56,7 +58,7 @@ log "Backup directory: ${BACKUP_DIR}"
 # ─── PostgreSQL dump ──────────────────────────────────────────────────────────
 log "▶ Dumping PostgreSQL database '${POSTGRES_DB}'..."
 
-docker compose -f docker-compose.prod.yml exec -T postgres \
+docker compose -f "${COMPOSE_FILE}" exec -T postgres \
   pg_dump -U "${POSTGRES_USER}" -d "${POSTGRES_DB}" --no-password \
   | gzip > "${BACKUP_DIR}/postgres.sql.gz"
 
@@ -68,7 +70,7 @@ log "▶ Archiving MinIO data volume..."
 
 # Use a temporary Alpine container that mounts the named volume read-only
 docker run --rm \
-  --volumes-from "$(docker compose -f docker-compose.prod.yml ps -q minio)" \
+  --volumes-from "$(docker compose -f "${COMPOSE_FILE}" ps -q minio)" \
   -v "${BACKUP_DIR}:/backup" \
   alpine:3.19 \
   tar -czf /backup/minio.tar.gz -C /data .
@@ -79,14 +81,21 @@ log "  MinIO archive: ${MINIO_SIZE} — OK"
 # ─── Retention — remove backups older than BACKUP_KEEP_DAYS ──────────────────
 log "▶ Applying retention policy (keep last ${BACKUP_KEEP_DAYS} days)..."
 
-find "${BACKUP_ROOT}" -maxdepth 1 -type d \
-  -name "????-??-??_??-??-??" \
-  | sort \
-  | head -n -"${BACKUP_KEEP_DAYS}" \
-  | while read -r old_dir; do
-      log "  Removing old backup: $(basename "${old_dir}")"
-      rm -rf "${old_dir}"
-    done
+_total=$(find "${BACKUP_ROOT}" -maxdepth 1 -type d -name "????-??-??_??-??-??" | wc -l | tr -d ' ')
+_to_remove=$(( _total - BACKUP_KEEP_DAYS ))
+
+if [[ "${_to_remove}" -gt 0 ]]; then
+  find "${BACKUP_ROOT}" -maxdepth 1 -type d \
+    -name "????-??-??_??-??-??" \
+    | sort \
+    | head -n "${_to_remove}" \
+    | while read -r old_dir; do
+        log "  Removing old backup: $(basename "${old_dir}")"
+        rm -rf "${old_dir}"
+      done
+else
+  log "  Nothing to remove (${_total} backup(s) found, keeping up to ${BACKUP_KEEP_DAYS})"
+fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────────
 TOTAL_SIZE=$(du -sh "${BACKUP_DIR}" | cut -f1)

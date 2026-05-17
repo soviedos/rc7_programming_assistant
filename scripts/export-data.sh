@@ -25,10 +25,11 @@ EXPORT_DIR="migration_export_${TIMESTAMP}"
 
 # ─── Load env vars so we can reference DB credentials ────────────────────────
 if [[ -f .env ]]; then
-  set -a
-  # shellcheck disable=SC1091
-  source .env
-  set +a
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    # Skip blank lines and comments
+    [[ -z "${line//[[:space:]]/}" || "$line" == \#* ]] && continue
+    export "$line"
+  done < .env
 fi
 
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
