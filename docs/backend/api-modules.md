@@ -1,6 +1,6 @@
 # Módulos del Backend
 
-Detalle de los módulos de la API, organizados por estado de implementación.
+Detalle de los módulos de la API.
 
 ---
 
@@ -24,7 +24,7 @@ Implementa firma y lectura de cookies de sesión con JWT (HttpOnly, Secure en pr
 | Endpoint | Método | Descripción |
 |---|---|---|
 | `/api/v1/profile` | `GET` | Datos del perfil del usuario autenticado |
-| `/api/v1/profile` | `PATCH` | Actualización de nombre y preferencias |
+| `/api/v1/profile` | `PUT` | Actualización de nombre y preferencias |
 | `/api/v1/profile/password` | `PUT` | Cambio de contraseña con verificación de la actual |
 
 ### `health`
@@ -39,6 +39,7 @@ Implementa firma y lectura de cookies de sesión con JWT (HttpOnly, Secure en pr
 |---|---|---|
 | `/api/v1/chat/generate` | `POST` | Generación de respuesta RAG con Gemini |
 | `/api/v1/chat/history` | `GET` | Historial de conversaciones del usuario |
+| `/api/v1/chat/history/{id}` | `DELETE` | Eliminación de una entrada del historial |
 
 Implementa un pipeline RAG en dos fases:
 1. **Fase 1 (HyDE):** consulta directa a Gemini con prompt simplificado para generar una respuesta hipotética que sirve como base de recuperación.
@@ -51,19 +52,34 @@ Comportamiento adicional:
 
 ### `admin`
 
+Consola administrativa protegida con `get_current_admin_user`.
+
+**Estado del sistema:**
+
 | Endpoint | Método | Descripción |
 |---|---|---|
-| `/api/v1/admin/status` | `GET` | Estado administrativo del sistema (requiere rol admin) |
+| `/api/v1/admin/status` | `GET` | Estado global del sistema (conteo de usuarios, manuales, chunks) |
 
-Contrato inicial para sostener la consola administrativa del frontend. Protegido con `get_current_admin_user`.
+**Gestión de usuarios:**
 
----
+| Endpoint | Método | Descripción |
+|---|---|---|
+| `/api/v1/admin/users` | `GET` | Lista paginada de usuarios |
+| `/api/v1/admin/users` | `POST` | Creación de nuevo usuario |
+| `/api/v1/admin/users/{id}` | `GET` | Detalle de un usuario |
+| `/api/v1/admin/users/{id}` | `PUT` | Actualización de datos del usuario |
+| `/api/v1/admin/users/{id}/toggle-active` | `PATCH` | Activación / desactivación del usuario |
 
-## Módulos parciales
+**Permisos de rol:**
+
+| Endpoint | Método | Descripción |
+|---|---|---|
+| `/api/v1/admin/users/{id}/roles` | `GET` | Lista los roles asignados al usuario |
+| `/api/v1/admin/users/{id}/roles` | `PUT` | Reemplaza los roles del usuario |
 
 ### `manuals`
 
-Gestión inicial de la base documental:
+Gestión de la base documental:
 
 | Endpoint | Método | Descripción |
 |---|---|---|
@@ -71,22 +87,11 @@ Gestión inicial de la base documental:
 | `/api/v1/manuals/{id}` | `GET` | Devuelve el detalle de un manual |
 | `/api/v1/manuals` | `POST` | Carga un PDF a MinIO y persiste sus metadatos |
 
-Implementado en una primera fase: registro del manual, almacenamiento en MinIO y estado inicial de ingestión (`pending`). Pendiente: versionado, reprocesamiento, integración automática con el worker y seguimiento detallado del pipeline.
-
-### `users`
-
-El modelo `User` y la persistencia para autenticación están implementados. Pendiente: CRUD administrativo completo (creación, edición, desactivación de usuarios).
+Registro del manual, almacenamiento en MinIO y seguimiento del estado de ingestión (`pending` → `processing` → `ready` / `failed`).
 
 ---
 
 ## Módulos planificados
-
-### `retrieval`
-
-Búsqueda y recuperación de contexto:
-- Consulta vectorial en pgvector
-- Filtrado por aplicabilidad técnica (tipo de robot, ejes, visión)
-- Citación por página y sección del manual original
 
 ### `settings`
 
@@ -98,6 +103,10 @@ Configuración administrativa del sistema:
 ### `audit`
 
 Registro de eventos del sistema:
+- Acciones administrativas
+- Errores del pipeline de ingestión
+- Consultas del asistente
+
 - Acciones administrativas
 - Cambios de configuración
 - Eventos de ingestión documental

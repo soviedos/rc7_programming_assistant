@@ -20,6 +20,7 @@ from sqlalchemy import delete, select
 from src.api.v1.deps import DbSession, get_current_admin_user
 from src.api.v1.schemas.manuals import (
     DocumentLanguage,
+    ManualCategory,
     ManualListResponse,
     ManualReviewSummaryListResponse,
     ManualReviewSummaryResponse,
@@ -245,6 +246,7 @@ async def upload_manual(
     robot_model: Annotated[str | None, Form(max_length=120)] = None,
     controller_version: Annotated[str | None, Form(max_length=80)] = None,
     document_language: Annotated[DocumentLanguage, Form()] = "es",
+    category: Annotated[list[ManualCategory] | None, Form()] = None,
     notes: Annotated[str | None, Form(max_length=1000)] = None,
     as_new_version: Annotated[bool, Form()] = False,
 ) -> ManualResponse:
@@ -318,6 +320,7 @@ async def upload_manual(
         robot_model=normalize_optional_text(robot_model),
         controller_version=normalize_optional_text(controller_version),
         document_language=document_language,
+        categories=category or [],
         notes=normalized_notes,
         last_error=None,
         processing_started_at=None,
@@ -350,6 +353,7 @@ async def update_manual(
 
     manual.title = normalized_title
     manual.notes = normalize_optional_text(payload.notes)
+    manual.categories = payload.categories
 
     db_session.add(manual)
     db_session.commit()

@@ -45,8 +45,8 @@ async function request<T>(
   });
 
   if (!response.ok) {
-    const body = (await response.json()) as ApiErrorBody;
-    throw new Error(normalizeErrorMessage(body.detail, fallbackError));
+    const body = await response.json().catch(() => ({} as ApiErrorBody));
+    throw new Error(normalizeErrorMessage((body as ApiErrorBody).detail, fallbackError));
   }
 
   return (await response.json()) as T;
@@ -67,9 +67,9 @@ async function requestMaybe<T>(
   }
 
   if (!response.ok) {
-    const body = (await response.json()) as ApiErrorBody;
+    const body = await response.json().catch(() => ({} as ApiErrorBody));
     throw new Error(
-      normalizeErrorMessage(body.detail, "Error en la solicitud."),
+      normalizeErrorMessage((body as ApiErrorBody).detail, "Error en la solicitud."),
     );
   }
 
@@ -88,8 +88,8 @@ async function requestVoid(
   });
 
   if (!response.ok) {
-    const body = (await response.json()) as ApiErrorBody;
-    throw new Error(normalizeErrorMessage(body.detail, fallbackError));
+    const body = await response.json().catch(() => ({} as ApiErrorBody));
+    throw new Error(normalizeErrorMessage((body as ApiErrorBody).detail, fallbackError));
   }
 }
 
@@ -106,8 +106,8 @@ async function requestWithFormData<T>(
   });
 
   if (!response.ok) {
-    const body = (await response.json()) as ApiErrorBody;
-    throw new Error(normalizeErrorMessage(body.detail, fallbackError));
+    const body = await response.json().catch(() => ({} as ApiErrorBody));
+    throw new Error(normalizeErrorMessage((body as ApiErrorBody).detail, fallbackError));
   }
 
   return (await response.json()) as T;

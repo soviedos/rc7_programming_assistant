@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import DateTime, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base
@@ -23,6 +24,9 @@ class Manual(Base):
     robot_model: Mapped[str | None] = mapped_column(String(120), nullable=True)
     controller_version: Mapped[str | None] = mapped_column(String(80), nullable=True)
     document_language: Mapped[str] = mapped_column(String(8), default="es")
+    categories: Mapped[list[str]] = mapped_column(
+        ARRAY(String(32)), server_default="{}", nullable=False
+    )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     uploaded_by_user_id: Mapped[int] = mapped_column(Integer, index=True)

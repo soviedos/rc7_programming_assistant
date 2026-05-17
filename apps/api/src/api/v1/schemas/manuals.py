@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 ManualStatus = Literal["pending", "processing", "indexed", "failed"]
 DocumentLanguage = Literal["es", "en"]
+ManualCategory = Literal["startup", "programming", "robot_specs", "errors"]
 
 
 class ManualResponse(BaseModel):
@@ -22,6 +23,7 @@ class ManualResponse(BaseModel):
     robot_model: str | None
     controller_version: str | None
     document_language: DocumentLanguage
+    categories: list[ManualCategory]
     notes: str | None
     last_error: str | None
     uploaded_by_user_id: int
@@ -40,6 +42,7 @@ class ManualListResponse(BaseModel):
 class ManualUpdateRequest(BaseModel):
     title: str = Field(min_length=3, max_length=255)
     notes: str | None = Field(default=None, max_length=1000)
+    categories: list[ManualCategory] = []
 
 
 class ManualReviewSummaryResponse(BaseModel):

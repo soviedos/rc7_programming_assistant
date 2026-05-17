@@ -31,8 +31,6 @@ El workspace se diseña como un **entorno de apoyo técnico estructurado**, no c
 | Modelo de robot | Selección del tipo de robot DENSO |
 | Número de ejes | 4-axis, 6-axis |
 | Configuración IO | Entradas/salidas digitales y analógicas |
-| Opciones de visión | Soporte de visión habilitado/deshabilitado |
-| Perfil de aplicación | Contexto de uso (pick & place, ensamblaje, etc.) |
 
 ### Panel central — Conversación y código
 
@@ -52,7 +50,7 @@ El workspace se diseña como un **entorno de apoyo técnico estructurado**, no c
 
 ## Estado de implementación
 
-El layout está construido e integrado con rutas protegidas. Los componentes de configuración del robot y los sidebars utilizan datos de ejemplo mientras se conecta el backend de chat, administración y RAG.
+El layout está construido e integrado con rutas protegidas. El pipeline RAG con Gemini es completamente funcional: el sidebar izquierdo envía la configuración del robot como contexto, el panel central muestra la respuesta generada con bloque de código PAC, y el sidebar derecho muestra el historial de consultas con referencias a los manuales recuperados.
 
 ## Justificación
 

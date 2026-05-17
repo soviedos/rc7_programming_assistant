@@ -28,21 +28,21 @@ El proyecto implementa una arquitectura de **monolito modular con frontend separ
 
 | Aspecto | Detalle |
 |---|---|
-| Tecnología | Python + Redis |
-| Responsabilidades | Ingestión documental, parsing, chunking, embeddings, indexación |
-| Estado | Placeholder funcional; ocupa su lugar arquitectónico para el pipeline RAG |
+| Tecnología | Python + SQLAlchemy + google-genai SDK |
+| Responsabilidades | Ingestión documental completa: parsing con pypdf, chunking semántico, revisión y autocorrección con Gemini, generación de embeddings (`gemini-embedding-001`), indexación en pgvector |
+| Estado | Completamente implementado y operativo |
 
 ### PostgreSQL + pgvector
 
-Base de datos transaccional principal y futura base vectorial. Actualmente soporta la persistencia de usuarios autorizados y la autenticación del sistema.
+Base de datos transaccional y vectorial. Soporta usuarios, autenticación, historial de chat, manuales, y chunks indexados con sus embeddings para búsqueda semántica.
 
 ### MinIO
 
-Almacenamiento de objetos compatible con S3 para PDFs originales y derivados del pipeline documental.
+Almacenamiento de objetos compatible con S3 para los PDFs originales de los manuales DENSO.
 
 ### Redis
 
-Previsto para coordinación de tareas asincrónicas y caché. Actualmente desplegado en el stack pero sin consumidores activos.
+Presente en el stack Docker. Actualmente sin consumidores activos; previsto para caché o colas en iteraciones futuras.
 
 ---
 
@@ -57,15 +57,18 @@ Previsto para coordinación de tareas asincrónicas y caché. Actualmente desple
 6. Usuario puede cambiar rol (admin ↔ user) si su perfil lo permite
 ```
 
-## Flujo RAG (objetivo)
+## Flujo RAG (implementado)
 
 ```text
 1. Administrador carga un manual PDF → MinIO
-2. Backend registra el documento y el worker lo reclama por polling a PostgreSQL
-3. Worker parsea, clasifica por robot/controlador y genera chunks
-4. Chunks + embeddings se indexan en PostgreSQL + pgvector
-5. Backend recupera contexto filtrado por configuración del robot
-6. Gemini genera respuesta con código PAC y referencias citadas
+2. Backend registra el documento; el worker lo reclama por polling a PostgreSQL
+3. Worker descarga el PDF, extrae texto con pypdf y genera chunks semánticos
+4. Gemini revisa y autocorrige cada chunk (revisión semántica)
+5. Chunks se vectorizan con gemini-embedding-001 (dim. 768) y se indexan en pgvector
+6. En el chat: usuario envía consulta + config del robot
+7. Fase 1 (HyDE): Gemini genera respuesta hipotética a partir de la consulta
+8. Embedding de (consulta + respuesta hipotética) → búsqueda vectorial en pgvector
+9. Fase 2 (RAG): Gemini genera respuesta final con contexto de los chunks recuperados
 ```
 
 ---

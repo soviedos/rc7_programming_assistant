@@ -4,6 +4,7 @@ import { api } from "@/lib/api-client";
 
 export type ManualStatus = "pending" | "processing" | "indexed" | "failed";
 export type DocumentLanguage = "es" | "en";
+export type ManualCategory = "startup" | "programming" | "robot_specs" | "errors";
 
 export type AdminStatus = {
   manualsIndexed: number;
@@ -24,6 +25,7 @@ export type ManualDocument = {
   robotModel: string | null;
   controllerVersion: string | null;
   documentLanguage: DocumentLanguage;
+  categories: ManualCategory[];
   notes: string | null;
   lastError: string | null;
   uploadedByUserId: number;
@@ -40,6 +42,7 @@ export type UploadManualInput = {
   robotModel?: string;
   controllerVersion?: string;
   documentLanguage?: DocumentLanguage;
+  categories?: ManualCategory[];
   notes?: string;
   asNewVersion?: boolean;
 };
@@ -47,6 +50,7 @@ export type UploadManualInput = {
 export type UpdateManualInput = {
   title: string;
   notes?: string;
+  categories?: ManualCategory[];
 };
 
 export type ManualReviewSummary = {
@@ -96,6 +100,7 @@ type ManualApiResponse = {
   robot_model: string | null;
   controller_version: string | null;
   document_language: DocumentLanguage;
+  categories: ManualCategory[];
   notes: string | null;
   last_error: string | null;
   uploaded_by_user_id: number;
@@ -166,6 +171,7 @@ function normalizeManual(raw: ManualApiResponse): ManualDocument {
     robotModel: raw.robot_model,
     controllerVersion: raw.controller_version,
     documentLanguage: raw.document_language,
+    categories: raw.categories ?? [],
     notes: raw.notes,
     lastError: raw.last_error,
     uploadedByUserId: raw.uploaded_by_user_id,
@@ -252,6 +258,9 @@ export async function uploadManual(
   if (input.notes?.trim()) {
     formData.set("notes", input.notes.trim());
   }
+  for (const cat of (input.categories ?? [])) {
+    formData.append("category", cat);
+  }
   if (input.asNewVersion) {
     formData.set("as_new_version", "true");
   }
@@ -273,6 +282,7 @@ export async function updateManual(
     {
       title: input.title.trim(),
       notes: input.notes?.trim() || null,
+      categories: input.categories ?? [],
     },
     "No fue posible actualizar el manual.",
   );

@@ -1,3 +1,4 @@
+import { api } from "@/lib/api-client";
 import type { ChatConfig } from "@/features/chat/chat-panel";
 
 // ── Types matching the FastAPI schema ──────────────────────────────
@@ -55,40 +56,17 @@ export function buildChatRequest(
 
 // ── API call ───────────────────────────────────────────────────────
 
-function getBaseUrl(): string {
-  // In the browser, use a relative path so requests go through the
-  // Next.js dev-server proxy (next.config.ts rewrites /api/* → api:8000).
-  // Set NEXT_PUBLIC_API_BASE_URL only when you need a different absolute URL.
-  return process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-}
-
 export async function sendChatMessage(
   prompt: string,
   config: ChatConfig,
   currentCode = "",
 ): Promise<ChatApiResponse> {
   const body = buildChatRequest(prompt, config, currentCode);
-  const url = `${getBaseUrl()}/api/v1/chat/generate`;
-
-  const response = await fetch(url, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    let detail = "Error al consultar el asistente.";
-    try {
-      const err = await response.json();
-      if (typeof err.detail === "string") detail = err.detail;
-    } catch {
-      // keep default
-    }
-    throw new Error(detail);
-  }
-
-  return (await response.json()) as ChatApiResponse;
+  return api.post<ChatApiResponse>(
+    "/api/v1/chat/generate",
+    body,
+    "Error al consultar el asistente.",
+  );
 }
 
 // ── Chat history ───────────────────────────────────────────────────
@@ -110,13 +88,15 @@ export type ChatHistoryListResponse = {
 };
 
 export async function fetchChatHistory(limit = 50, offset = 0): Promise<ChatHistoryListResponse> {
-  const url = `${process.env.NEXT_PUBLIC_API_BASE_URL ?? ""}/api/v1/chat/history?limit=${limit}&offset=${offset}`;
-  const response = await fetch(url, { credentials: "include" });
-  if (!response.ok) return { items: [], total: 0 };
-  return (await response.json()) as ChatHistoryListResponse;
+  try {
+    return await api.get<ChatHistoryListResponse>(
+      `/api/v1/chat/history?limit=${limit}&offset=${offset}`,
+    );
+  } catch {
+    return { items: [], total: 0 };
+  }
 }
 
 export async function deleteChatHistoryItem(id: number): Promise<void> {
-  const url = `${process.env.NEXT_PUBLIC_API_BASE_URL ?? ""}/api/v1/chat/history/${id}`;
-  await fetch(url, { method: "DELETE", credentials: "include" });
+  await api.deleteVoid(`/api/v1/chat/history/${id}`);
 }

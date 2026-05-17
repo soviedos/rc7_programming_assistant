@@ -4,21 +4,16 @@ import sys
 from logging.handlers import RotatingFileHandler
 
 LOG_DIR = os.environ.get("LOG_DIR", "./logs")
-LOG_FILE = os.path.join(LOG_DIR, "worker.log")
+LOG_FILE = os.path.join(LOG_DIR, "api.log")
 MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 BACKUP_COUNT = 5
 
-_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
+_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 _DATE_FORMAT = "%Y-%m-%dT%H:%M:%S"
 
-_logger: logging.Logger | None = None
 
-
-def _get_logger() -> logging.Logger:
-    global _logger
-    if _logger is not None:
-        return _logger
-
+def setup_logging() -> None:
+    """Configure root logger to write to stdout and a rotating file."""
     os.makedirs(LOG_DIR, exist_ok=True)
 
     formatter = logging.Formatter(_FORMAT, datefmt=_DATE_FORMAT)
@@ -34,15 +29,14 @@ def _get_logger() -> logging.Logger:
     stream_handler = logging.StreamHandler(sys.stdout)
     stream_handler.setFormatter(formatter)
 
-    logger = logging.getLogger("worker")
-    logger.setLevel(logging.INFO)
-    logger.propagate = False
-    logger.addHandler(file_handler)
-    logger.addHandler(stream_handler)
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
 
-    _logger = logger
-    return _logger
-
-
-def log(scope: str, message: str) -> None:
-    _get_logger().info("[%s] %s", scope, message)
+    # Avoid adding duplicate handlers on hot-reload
+    if not any(isinstance(h, RotatingFileHandler) for h in root.handlers):
+        root.addHandler(file_handler)
+    if not any(
+        isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler)
+        for h in root.handlers
+    ):
+        root.addHandler(stream_handler)

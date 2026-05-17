@@ -26,6 +26,7 @@ import {
   deleteManual,
   updateManual,
   uploadManual,
+  type ManualCategory,
   type ManualDocument,
   type ManualReviewSummary,
 } from "@/lib/manuals";
@@ -38,11 +39,20 @@ type ManualFormState = {
   id: string;
   title: string;
   file: File;
+  categories: ManualCategory[];
 };
 
 type EditFormState = {
   title: string;
   notes: string;
+  categories: ManualCategory[];
+};
+
+const CATEGORY_CONFIG: Record<ManualCategory, { label: string; className: string }> = {
+  startup:      { label: "Startup",              className: "text-accent bg-accent/10" },
+  programming:  { label: "Programación",          className: "text-success bg-success/10" },
+  robot_specs:  { label: "Características",       className: "text-info bg-info/10" },
+  errors:       { label: "Errores",               className: "text-warning bg-warning/10" },
 };
 
 const STATUS_CONFIG: Record<
@@ -186,6 +196,7 @@ function buildQueueItem(file: File): ManualFormState {
     id: `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     file,
     title: extractTitleFromFile(file),
+    categories: [],
   };
 }
 
@@ -269,9 +280,10 @@ function UploadModal({
     try {
       for (const item of items) {
         try {
-          await uploadManual({
+        await uploadManual({
             title: item.title,
             file: item.file,
+            ...(item.categories.length > 0 && { categories: item.categories }),
           });
         } catch (err) {
           const message =
@@ -382,6 +394,32 @@ function UploadModal({
                       <p className="text-sm text-ink font-medium truncate">{item.title || item.file.name}</p>
                       <p className="text-[11px] text-soft truncate">{item.file.name}</p>
                       <p className="text-[11px] text-soft">{formatFileSize(item.file.size)}</p>
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                        {(Object.entries(CATEGORY_CONFIG) as [ManualCategory, { label: string; className: string }][]).map(([key, { label }]) => (
+                          <label key={key} className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={item.categories.includes(key)}
+                              onChange={(e) =>
+                                setItems((prev) =>
+                                  prev.map((i) =>
+                                    i.id === item.id
+                                      ? {
+                                          ...i,
+                                          categories: e.target.checked
+                                            ? [...i.categories, key]
+                                            : i.categories.filter((c) => c !== key),
+                                        }
+                                      : i,
+                                  ),
+                                )
+                              }
+                              className="accent-accent"
+                            />
+                            <span className="text-xs text-ink">{label}</span>
+                          </label>
+                        ))}
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -443,13 +481,13 @@ function EditManualModal({
   onClose: () => void;
   onSuccess: (message: string) => void;
 }) {
-  const [form, setForm] = useState<EditFormState>({ title: "", notes: "" });
+  const [form, setForm] = useState<EditFormState>({ title: "", notes: "", categories: [] });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<FlashMessage>(null);
 
   useEffect(() => {
     if (manual) {
-      setForm({ title: manual.title, notes: manual.notes ?? "" });
+      setForm({ title: manual.title, notes: manual.notes ?? "", categories: manual.categories ?? [] });
       setMessage(null);
       setIsSubmitting(false);
     }
@@ -473,6 +511,7 @@ function EditManualModal({
       await updateManual(currentManual.id, {
         title: form.title,
         notes: form.notes,
+        categories: form.categories,
       });
       onSuccess("Manual actualizado correctamente.");
       onClose();
@@ -520,6 +559,29 @@ function EditManualModal({
               placeholder="Agrega notas adicionales"
               className="w-full px-3 py-2 rounded-lg bg-surface border border-border text-sm text-ink placeholder:text-soft focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/40 transition-colors"
             />
+          </div>
+          <div>
+            <p className="text-xs font-medium text-muted mb-2">Categorías</p>
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {(Object.entries(CATEGORY_CONFIG) as [ManualCategory, { label: string; className: string }][]).map(([key, { label }]) => (
+                <label key={key} className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.categories.includes(key)}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        categories: e.target.checked
+                          ? [...prev.categories, key]
+                          : prev.categories.filter((c) => c !== key),
+                      }))
+                    }
+                    className="accent-accent"
+                  />
+                  <span className="text-sm text-ink">{label}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
           {message && (
@@ -926,6 +988,11 @@ export function ManualsPanel() {
                   <div className="flex items-center gap-2 mb-1">
                     <h3 className="text-sm font-medium text-ink truncate">{manual.title}</h3>
                     <StatusBadge status={manual.status} />
+                    {manual.categories.map((cat) => (
+                      <span key={cat} className={cn("inline-flex items-center text-[11px] font-medium px-2 py-0.5 rounded-full", CATEGORY_CONFIG[cat].className)}>
+                        {CATEGORY_CONFIG[cat].label}
+                      </span>
+                    ))}
                   </div>
                   <p className="text-xs text-muted truncate">{manual.originalFilename}</p>
                   <div className="flex items-center gap-4 mt-1.5 text-[11px] text-soft">

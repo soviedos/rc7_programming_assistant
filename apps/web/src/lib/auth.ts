@@ -9,7 +9,6 @@ export type SessionData = {
   displayName: string;
   role: UserRole;
   availableRoles: UserRole[];
-  redirectPath: string;
 };
 
 type SessionApiResponse = {
@@ -17,7 +16,6 @@ type SessionApiResponse = {
   display_name: string;
   role: UserRole;
   available_roles: UserRole[];
-  redirect_path: string;
 };
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -41,7 +39,6 @@ function normalizeSession(payload: SessionApiResponse): SessionData {
     displayName: payload.display_name,
     role,
     availableRoles: availableRoles.length > 0 ? availableRoles : [role],
-    redirectPath: payload.redirect_path || getRolePath(role),
   };
 }
 

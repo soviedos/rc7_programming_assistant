@@ -10,5 +10,5 @@ export { CanvasPanel } from "./canvas-panel";
 export type { WorkspaceMode } from "./canvas-panel";
 
 // Right AI chat
-export { AiChatSidebar, SAMPLE_MESSAGES } from "./ai-chat-sidebar";
+export { AiChatSidebar } from "./ai-chat-sidebar";
 export type { Message, MessageReference } from "./ai-chat-sidebar";

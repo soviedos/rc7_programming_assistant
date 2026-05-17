@@ -21,7 +21,6 @@ class SessionResponse(BaseModel):
     display_name: str
     role: RoleName
     available_roles: list[RoleName]
-    redirect_path: str
 
 
 class RoleSwitchRequest(BaseModel):

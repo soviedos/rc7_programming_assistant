@@ -34,6 +34,7 @@ def serialize_manual(manual: Manual) -> ManualResponse:
         robot_model=manual.robot_model,
         controller_version=manual.controller_version,
         document_language=manual.document_language,  # type: ignore[arg-type]
+        categories=manual.categories,  # type: ignore[arg-type]
         notes=manual.notes,
         last_error=manual.last_error,
         uploaded_by_user_id=manual.uploaded_by_user_id,

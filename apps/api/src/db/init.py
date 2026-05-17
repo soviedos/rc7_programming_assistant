@@ -133,8 +133,6 @@ def ensure_chunk_embedding_column() -> None:
 
 def ensure_chat_history_table() -> None:
     """Create the chat_history table if it does not exist yet."""
-    from src.db.models.chat_history import ChatHistory  # noqa: PLC0415
-
     inspector = inspect(engine)
     if "chat_history" in set(inspector.get_table_names()):
         return

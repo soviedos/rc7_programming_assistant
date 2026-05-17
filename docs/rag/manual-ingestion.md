@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Transformar manuales PDF oficiales de DENSO en una base de conocimiento confiable, recuperable y filtrable por contexto técnico.
+Transformar manuales PDF oficiales de DENSO en una base de conocimiento vectorial recuperable por semántica.
 
 ---
 
@@ -11,61 +11,47 @@ Transformar manuales PDF oficiales de DENSO en una base de conocimiento confiabl
 | Supuesto | Detalle |
 |---|---|
 | Calidad de los PDFs | Los manuales tienen buena calidad digital; el texto es extraíble sin depender de OCR |
-| Estructura documental | Los documentos siguen una estructura de capítulos, secciones y ejemplos identificable |
-| Aplicabilidad variable | Cada tema puede aplicar a diferentes tipos de robot o versiones del controlador |
+| Estructura documental | Los documentos siguen una estructura de capítulos y secciones identificable |
 
 ---
 
 ## Pipeline de ingestión
 
 ```text
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Upload    │───▶│   Parsing   │───▶│  Chunking   │───▶│ Classifica- │
-│  (MinIO)    │    │  (texto +   │    │ (segmenta-  │    │   ción      │
-│             │    │  estructura)│    │   ción)     │    │ (aplicab.)  │
-└─────────────┘    └─────────────┘    └─────────────┘    └──────┬──────┘
-                                                                │
-                                                         ┌──────▼──────┐    ┌─────────────┐
-                                                         │ Embeddings  │───▶│ Indexación   │
-                                                         │ (vectores)  │    │ (pgvector)   │
-                                                         └─────────────┘    └─────────────┘
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   Upload    │───▶│   Parsing   │───▶│  Chunking   │───▶│  Revisión   │───▶│ Embeddings  │
+│  (MinIO)    │    │  (pypdf)    │    │ (semántico) │    │  semántica  │    │  (Gemini)   │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘    └──────┬──────┘
+                                                                                    │
+                                                                             ┌──────▼──────┐
+                                                                             │ Indexación  │
+                                                                             │ (pgvector)  │
+                                                                             └─────────────┘
 ```
 
 ### 1. Subida del PDF
 
-El archivo se almacena en MinIO y se registra en la base de datos con sus metadatos.
+El archivo se sube a MinIO y se registra en la base de datos con estado `pending`.
 
 ### 2. Parsing
 
-Extracción de texto y detección de estructura documental (capítulos, secciones, tablas).
+El worker detecta el manual pendiente mediante polling a PostgreSQL, descarga el PDF desde MinIO y extrae el texto página a página con `pypdf`.
 
-### 3. Segmentación (chunking)
+### 3. Chunking semántico
 
-División del contenido en unidades recuperables, organizadas por:
+El texto extraído se divide en fragmentos de tamaño controlado, respetando párrafos y estructura del documento.
 
-- Capítulo y sección
-- Comandos PAC
-- Ejemplos de código
-- Tablas de referencia
+### 4. Revisión semántica
 
-### 4. Clasificación de aplicabilidad
-
-Cada chunk se clasifica por su contexto técnico:
-
-| Dimensión | Valores posibles |
-|---|---|
-| Tipo de robot | 4-axis, 6-axis |
-| Soporte de visión | Sí, No |
-| Aplicabilidad | Todos los robots, modelos específicos |
-| Versión mínima | Versión del controlador RC7 requerida |
+Cada chunk pasa por Gemini para verificar coherencia y corregir artefactos de extracción (saltos de línea espurios, encabezados fragmentados, etc.). Los chunks con contenido insuficiente se descartan.
 
 ### 5. Generación de embeddings
 
-Vectorización del contenido textual de cada chunk para búsqueda semántica.
+Los chunks revisados se vectorizan en lotes con `gemini-embedding-001` (768 dimensiones, task type `RETRIEVAL_DOCUMENT`).
 
 ### 6. Indexación
 
-Carga de chunks y vectores en PostgreSQL + pgvector, con metadatos de clasificación asociados.
+Chunks y vectores se persisten en PostgreSQL + pgvector. El estado del manual se actualiza a `ready` al terminar o `failed` si hay errores irrecuperables.
 
 ---
 
@@ -75,9 +61,10 @@ Carga de chunks y vectores en PostgreSQL + pgvector, con metadatos de clasificac
 |---|---|
 | `text` | Contenido textual del fragmento |
 | `page` | Número de página en el PDF original |
-| `section` | Sección del manual |
-| `commands` | Comandos PAC detectados en el fragmento |
-| `applicability` | Clasificación técnica (robot, ejes, visión, versión) |
+| `chunk_index` | Posición del chunk dentro del manual |
+| `embedding` | Vector de 768 dimensiones (ARRAY REAL, nullable mientras se genera) |
+| `manual_id` | Referencia al manual de origen |
+
 | `source_file` | Referencia al archivo PDF original en MinIO |
 | `embedding` | Vector generado para búsqueda semántica |
 

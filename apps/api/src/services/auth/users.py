@@ -28,5 +28,4 @@ def build_session_response(user: User, active_role: RoleName) -> SessionResponse
         display_name=user.display_name,
         role=role,
         available_roles=available_roles,
-        redirect_path="/admin" if role == "admin" else "/app",
     )

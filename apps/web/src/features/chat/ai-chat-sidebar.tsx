@@ -21,46 +21,6 @@ export type Message = {
   isError?: boolean;
 };
 
-// ── Sample data ────────────────────────────────────────────────────
-
-export const SAMPLE_MESSAGES: Message[] = [
-  {
-    id: "1",
-    role: "user",
-    content:
-      "Genera una rutina PAC de Pick & Place con control de garra, approach seguro y una secuencia lista para copiar en Wincaps III.",
-    timestamp: new Date(),
-  },
-  {
-    id: "2",
-    role: "assistant",
-    content:
-      "Preparé una secuencia orientada a RC7 para pick and place con TAKEARM, approach/depart, activación de mano y retorno a HOME. Está pensada para un flujo de producción estable y fácil de adaptar.",
-    code: `PROGRAM PICK_AND_PLACE
-  TAKEARM 1
-  MOTOR ON
-  SPEED 35
-  APPROACH P, P[11], 80
-  MOVE L, P_PICK
-  HAND ON
-  DLY 0.3
-  DEPART 80
-  MOVE P, P_SAFE
-  APPROACH P, P[21], 100
-  MOVE L, P_PLACE
-  HAND OFF
-  DLY 0.2
-  DEPART 100
-  MOVE P, P_HOME
-END`,
-    references: [
-      { manual: "Programmer's Manual I", section: "Motion Commands" },
-      { manual: "PAC Library", section: "Hand control" },
-    ],
-    timestamp: new Date(),
-  },
-];
-
 // ── Internal: code block ───────────────────────────────────────────
 
 function CodeBlock({ code }: { code: string }) {

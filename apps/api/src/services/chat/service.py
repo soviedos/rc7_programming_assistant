@@ -21,6 +21,15 @@ _GEN_MODEL = "gemini-2.5-flash"
 _TOP_K = 6  # number of chunks to retrieve
 _MAX_CTX_CHARS = 12_000  # character budget for context passed to Gemini
 
+# Category boost multipliers applied to cosine similarity scores.
+# A value of 1.0 means no boost; >1.0 promotes chunks from that category.
+_CATEGORY_BOOST: dict[str, float] = {
+    "programming": 1.30,
+    "startup": 1.15,
+    "robot_specs": 1.05,
+    "errors": 1.10,
+}
+
 
 # ── Helpers ────────────────────────────────────────────────────────
 
@@ -74,7 +83,11 @@ def _retrieve_chunks(
         if not chunk.embedding:
             continue
         sim = _cosine_similarity(query_embedding, chunk.embedding)
-        scored.append((chunk, manual, sim))
+        boost = max(
+            (_CATEGORY_BOOST.get(cat, 1.0) for cat in (manual.categories or [])),
+            default=1.0,
+        )
+        scored.append((chunk, manual, sim * boost))
 
     scored.sort(key=lambda x: x[2], reverse=True)
     return scored[:top_k]
@@ -119,11 +132,37 @@ def _build_system_prompt(payload: ChatRequest) -> str:
         + io_expansion_line
         + f"- Velocidad máxima: {payload.max_speed_pct}%\n"
         f"- Tool activo: Tool {payload.tool_number}\n\n"
-        "Cuando generes código PAC:\n"
+        "Cuando generes código PAC debes seguir ESTRICTAMENTE la estructura del lenguaje PAC "
+        "(Capítulo 9 del manual de startup RC7):\n\n"
+        "ESTRUCTURA OBLIGATORIA DE UN PROGRAMA PAC:\n"
+        "  1. La primera línea siempre debe ser la declaración del programa: PROGRAM <nombre>\n"
+        "  2. El cuerpo del programa contiene las instrucciones a ejecutar.\n"
+        "  3. El programa principal SIEMPRE termina con la sentencia END.\n"
+        "  4. Las subrutinas se definen DESPUÉS del END, con el formato:\n"
+        "       *NOMBRE_SUBRUTINA:\n"
+        "           <instrucciones>\n"
+        "       RETURN\n"
+        "  5. Para llamar a otro programa externo: CALL <nombre_programa>\n"
+        "  6. Para llamar a una subrutina interna del mismo programa: GOSUB *NOMBRE_SUBRUTINA:\n\n"
+        "Ejemplo de estructura correcta:\n"
+        "  PROGRAM MAIN\n"
+        "      TAKEARM\n"
+        "      MOTOR ON\n"
+        "      GOSUB *INIT:\n"
+        "      CALL MOTION\n"
+        "      MOTOR OFF\n"
+        "      FREEARM\n"
+        "  END\n"
+        "  *INIT:\n"
+        "      SPEED 50\n"
+        "      MOVE P, @P P0\n"
+        "  RETURN\n\n"
+        "Reglas adicionales al generar código PAC:\n"
         "1. Usa los comandos correctos del manual (TAKEARM, MOTOR ON/OFF, SPEED, MOVE, etc.).\n"
         "2. Incluye comentarios en cada bloque lógico.\n"
-        "3. Maneja siempre HOME al inicio y al final.\n"
-        "4. El bloque de código PAC debe estar EXCLUSIVAMENTE dentro de ```pac ... ```.\n\n"
+        "3. Maneja siempre HOME (P0) al inicio y al final del programa principal.\n"
+        "4. El bloque de código PAC debe estar EXCLUSIVAMENTE dentro de ```pac ... ```.\n"
+        "5. NUNCA omitas el PROGRAM ni el END — sin ellos el programa no compilará.\n\n"
         "Para troubleshooting: diagnostica paso a paso, menciona el código de error si aplica "
         "y la sección del manual donde se describe la solución.\n\n"
         "Responde SIEMPRE con este formato JSON (sin markdown adicional fuera del JSON):\n"

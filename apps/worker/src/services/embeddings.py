@@ -1,4 +1,4 @@
-"""Gemini text-embedding-004 service used during chunk indexing."""
+"""Gemini text-embedding service used during chunk indexing."""
 
 from __future__ import annotations
 
@@ -59,14 +59,3 @@ def embed_texts(texts: Sequence[str]) -> list[list[float]]:
                     time.sleep(wait)
 
     return results
-
-
-def embed_query(text: str) -> list[float]:
-    """Return the embedding vector for a single query string."""
-    _get_client()
-    response = genai.embed_content(
-        model=_EMBEDDING_MODEL,
-        content=text,
-        task_type="RETRIEVAL_QUERY",
-    )
-    return response["embedding"]
