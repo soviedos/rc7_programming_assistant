@@ -78,9 +78,12 @@ rc7_programming_assistant/
 │   ├── minio/
 │   ├── postgres/
 │   └── redis/
+├── scripts/          # Scripts de migración y mantenimiento de datos
 ├── storage/          # Volúmenes locales para desarrollo
 ├── docker-compose.yml
-└── .env.example
+├── docker-compose.prod.yml
+├── .env.example
+└── .env.prod.example  # Template de variables para producción
 ```
 
 ---
@@ -195,14 +198,16 @@ docker compose exec worker python -m pytest
 - Frontend con login, workspace del asistente y consola administrativa
 - Stack contenedorizado con healthchecks y dependencias gestionadas
 - Suite de pruebas automatizadas (backend, frontend, worker)
+- Integración con Google Gemini (pipeline RAG con HyDE en dos fases)
+- Pipeline de ingestión de manuales PDF (parsing → chunking → revisión semántica → embeddings → pgvector)
+- Búsqueda vectorial con pgvector integrada en el chat
+- CRUD administrativo completo de usuarios y manuales
+- Configuración de producción (Dockerfiles optimizados, `docker-compose.prod.yml`, Nginx, scripts de migración)
 
-### En desarrollo
+### Pendiente
 
-- Integración con Google Gemini para generación de respuestas
-- Pipeline de ingestión de manuales PDF (parsing, chunking, embeddings)
-- Búsqueda vectorial con pgvector y filtrado por aplicabilidad técnica
-- CRUD administrativo completo de usuarios
 - Autenticación con Google SSO
+- Módulo de auditoría de acciones administrativas
 
 > Consulte [docs/operations/scaffold-status.md](./docs/operations/scaffold-status.md) para el estado detallado.
 
@@ -218,8 +223,9 @@ docker compose exec worker python -m pytest
 | [Módulos del backend](./docs/backend/api-modules.md) | Endpoints y servicios implementados |
 | [Layout del workspace](./docs/frontend/workspace-layout.md) | Diseño de la interfaz principal |
 | [Desarrollo local](./docs/operations/local-development.md) | Guía de arranque y operación |
+| [Despliegue en producción](./docs/operations/deployment.md) | Configuración y migración de datos |
 | [Testing](./docs/operations/testing.md) | Estrategia y comandos de prueba |
-| [Ingestión de manuales](./docs/rag/manual-ingestion.md) | Pipeline RAG planificado |
+| [Ingestión de manuales](./docs/rag/manual-ingestion.md) | Pipeline RAG implementado |
 | [ADR-0001](./docs/decisions/ADR-0001-monolithic-modular-architecture.md) | Decisión de arquitectura modular |
 
 ---
