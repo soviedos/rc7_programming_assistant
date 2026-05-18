@@ -26,7 +26,9 @@ def create_user(
     return user
 
 
-def test_login_me_switch_role_and_logout(client: TestClient, db_session: Session) -> None:
+def test_login_me_switch_role_and_logout(
+    client: TestClient, db_session: Session
+) -> None:
     create_user(
         db_session,
         email="soviedo@ucenfotec.ac.cr",
@@ -67,7 +69,9 @@ def test_login_me_switch_role_and_logout(client: TestClient, db_session: Session
     assert me_after_logout_response.json()["detail"] == "No hay una sesión activa."
 
 
-def test_login_rejects_invalid_credentials(client: TestClient, db_session: Session) -> None:
+def test_login_rejects_invalid_credentials(
+    client: TestClient, db_session: Session
+) -> None:
     create_user(
         db_session,
         email="soviedo@ucenfotec.ac.cr",
@@ -108,7 +112,9 @@ def test_login_rejects_inactive_users(client: TestClient, db_session: Session) -
     assert response.json()["detail"] == "Credenciales invalidas."
 
 
-def test_switch_role_rejects_roles_not_assigned(client: TestClient, db_session: Session) -> None:
+def test_switch_role_rejects_roles_not_assigned(
+    client: TestClient, db_session: Session
+) -> None:
     create_user(
         db_session,
         email="usuario@ucenfotec.ac.cr",
@@ -130,7 +136,9 @@ def test_switch_role_rejects_roles_not_assigned(client: TestClient, db_session: 
     )
 
     assert response.status_code == 403
-    assert response.json()["detail"] == "Ese usuario no tiene permiso para usar ese rol."
+    assert (
+        response.json()["detail"] == "Ese usuario no tiene permiso para usar ese rol."
+    )
 
 
 def test_login_validates_required_fields(client: TestClient) -> None:

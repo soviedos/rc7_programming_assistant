@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import time
+from collections.abc import Iterator
 from typing import Sequence
 
 from google import genai
@@ -248,6 +249,29 @@ def _call_gemini(
     ) from last_exc
 
 
+def _call_gemini_stream(
+    message: str,
+    system_instruction: str | None = None,
+    *,
+    temperature: float = _TEMPERATURE,
+    max_output_tokens: int = _MAX_TOKENS,
+) -> Iterator[str]:
+    """Yield raw text chunks from the Gemini streaming API."""
+    client = _get_client()
+    gen_config = types.GenerateContentConfig(
+        system_instruction=system_instruction,
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+    )
+    for chunk in client.models.generate_content_stream(
+        model=_GEN_MODEL,
+        contents=message,
+        config=gen_config,
+    ):
+        if chunk.text:
+            yield chunk.text
+
+
 # ── Public entry point ─────────────────────────────────────────────
 
 
@@ -371,3 +395,119 @@ def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
         pac_code=pac_code,
         references=references,
     )
+
+
+def stream_rag_response(
+    db: Session,
+    payload: ChatRequest,
+) -> Iterator[str]:
+    """Run the 4-phase RAG pipeline streaming Phase 4 tokens as SSE strings.
+
+    Yields SSE-formatted strings: keepalive comments, ``chunk`` data events,
+    and a final ``done`` data event containing the parsed summary, pac_code
+    and references.  Raises RuntimeError on pipeline failure (the caller is
+    responsible for catching it and emitting an ``error`` event).
+    """
+    import json
+
+    # ── Read runtime settings ─────────────────────────────────────
+    top_k = int(get_setting_value(db, "rag_top_k_chunks", str(_TOP_K)))
+    max_ctx = int(
+        get_setting_value(db, "rag_context_budget_chars", str(_MAX_CTX_CHARS))
+    )
+    temperature = float(get_setting_value(db, "gemini_temperature", str(_TEMPERATURE)))
+    max_tokens = int(get_setting_value(db, "gemini_max_tokens", str(_MAX_TOKENS)))
+
+    # ── Phase 1: Direct Gemini call (no RAG) ──────────────────────
+    system_prompt = _build_system_prompt(db, payload)
+    phase1_system = (
+        "Eres un experto programador de robots industriales Denso RC7. "
+        "Responde en español de forma técnica y detallada. "
+        "Puedes incluir fragmentos de código PAC si son relevantes."
+    )
+    phase1_message = payload.prompt
+    if payload.current_code.strip():
+        phase1_message = (
+            f"CÓDIGO PAC ACTUAL EN EL CANVAS:\n```pac\n{payload.current_code}\n```\n\n"
+            f"CONSULTA DEL USUARIO:\n{payload.prompt}"
+        )
+    initial_answer = _call_gemini(
+        phase1_message,
+        system_instruction=phase1_system,
+        temperature=temperature,
+        max_output_tokens=max_tokens,
+    )
+
+    # ── Phase 2: Embed (query + initial answer) → retrieve chunks ─
+    embed_input = f"{payload.prompt}\n{initial_answer[:600]}"
+    query_embedding = _embed_query(embed_input)
+    retrieved = _retrieve_chunks(db, query_embedding, top_k=top_k)
+
+    # ── Phase 3: Build RAG context ────────────────────────────────
+    context_chunks: list[str] = []
+    total_chars = 0
+    reference_map: dict[int, tuple[Manual, int]] = {}
+
+    for chunk, manual, _score in retrieved:
+        fragment = f"[{manual.title} — pág. {chunk.page_number}]\n{chunk.text}"
+        if total_chars + len(fragment) > max_ctx:
+            break
+        context_chunks.append(fragment)
+        reference_map[chunk.id] = (manual, chunk.page_number)
+        total_chars += len(fragment)
+
+    # ── Phase 4: Stream final Gemini response ─────────────────────
+    if context_chunks:
+        gemini_message = _build_user_message(payload, context_chunks)
+        gemini_system = system_prompt
+    else:
+        no_rag_note = (
+            "AVISO: Los manuales del sistema aún no tienen embeddings generados, "
+            "por lo que esta respuesta se basa en las reglas de sintaxis PAC incluidas "
+            "en el prompt del sistema. Genera el código solicitado de la mejor forma "
+            "posible usando esas reglas, e indica en el summary que no se usó contexto "
+            "de manuales en esta respuesta."
+        )
+        gemini_message = f"{no_rag_note}\n\nCONSULTA DEL USUARIO:\n{payload.prompt}"
+        if payload.current_code.strip():
+            gemini_message = (
+                f"{no_rag_note}\n\n"
+                f"CÓDIGO PAC ACTUAL EN EL CANVAS:\n```pac\n{payload.current_code}\n```\n\n"
+                f"CONSULTA DEL USUARIO:\n{payload.prompt}"
+            )
+        gemini_system = system_prompt
+
+    full_text = ""
+    last_keepalive = time.time()
+
+    for chunk_text in _call_gemini_stream(
+        gemini_message,
+        system_instruction=gemini_system,
+        temperature=temperature,
+        max_output_tokens=max_tokens,
+    ):
+        full_text += chunk_text
+        now = time.time()
+        if now - last_keepalive >= 15.0:
+            yield ": keepalive\n\n"
+            last_keepalive = now
+        yield f"data: {json.dumps({'type': 'chunk', 'content': chunk_text})}\n\n"
+
+    # ── Parse structured JSON ──────────────────────────────────────
+    try:
+        data = _parse_gemini_json(full_text)
+    except Exception:
+        data = {"summary": full_text, "pac_code": "", "references": []}
+
+    summary = str(data.get("summary", "")).strip()
+    pac_code = str(data.get("pac_code", "")).strip()
+
+    seen_titles: set[str] = set()
+    references: list[dict] = []
+    for _manual, page in reference_map.values():
+        key = f"{_manual.title}:{page}"
+        if key not in seen_titles:
+            seen_titles.add(key)
+            references.append({"title": _manual.title, "page": str(page)})
+
+    yield f"data: {json.dumps({'type': 'done', 'summary': summary or 'Respuesta generada.', 'pac_code': pac_code, 'references': references})}\n\n"

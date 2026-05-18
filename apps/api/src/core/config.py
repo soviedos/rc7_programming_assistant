@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     minio_bucket_manuals: str = "rc7-manuals"
     gemini_api_key: str = _PLACEHOLDER
     gemini_timeout_seconds: int = 300
+    enable_streaming: bool = True
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -27,16 +27,14 @@ _PG_PORT = os.getenv("POSTGRES_PORT", "5432")
 _TEST_DB = "rc7_test"
 
 _TEST_DATABASE_URL = (
-    f"postgresql+psycopg://{_PG_USER}:{_PG_PASSWORD}"
-    f"@{_PG_HOST}:{_PG_PORT}/{_TEST_DB}"
+    f"postgresql+psycopg://{_PG_USER}:{_PG_PASSWORD}@{_PG_HOST}:{_PG_PORT}/{_TEST_DB}"
 )
 
 
 def _ensure_test_db() -> None:
     """Create the rc7_test database if it does not already exist."""
     admin_url = (
-        f"postgresql+psycopg://{_PG_USER}:{_PG_PASSWORD}"
-        f"@{_PG_HOST}:{_PG_PORT}/postgres"
+        f"postgresql+psycopg://{_PG_USER}:{_PG_PASSWORD}@{_PG_HOST}:{_PG_PORT}/postgres"
     )
     admin_engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
     with admin_engine.connect() as conn:

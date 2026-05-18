@@ -69,6 +69,81 @@ export async function sendChatMessage(
   );
 }
 
+// ── SSE streaming types ────────────────────────────────────────────
+
+export type SSEChunkEvent = { type: "chunk"; content: string };
+export type SSEDoneEvent = {
+  type: "done";
+  summary: string;
+  pac_code: string;
+  references: ChatApiReference[];
+};
+export type SSEErrorEvent = { type: "error"; message: string };
+export type SSEEvent = SSEChunkEvent | SSEDoneEvent | SSEErrorEvent;
+
+export type StreamChatCallbacks = {
+  onFirstChunk: () => void;
+  onChunk: (content: string) => void;
+  onDone: (event: SSEDoneEvent) => void;
+  onError: (event: SSEErrorEvent) => void;
+};
+
+export async function streamChatMessage(
+  prompt: string,
+  config: ChatConfig,
+  currentCode = "",
+  callbacks: StreamChatCallbacks,
+): Promise<void> {
+  const body = buildChatRequest(prompt, config, currentCode);
+
+  const response = await fetch("/api/v1/chat/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "include",
+  });
+
+  if (!response.ok || !response.body) {
+    callbacks.onError({ type: "error", message: `Error HTTP ${response.status}` });
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let firstChunk = true;
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        try {
+          const evt: SSEEvent = JSON.parse(line.slice(6));
+          if (evt.type === "chunk") {
+            if (firstChunk) {
+              callbacks.onFirstChunk();
+              firstChunk = false;
+            }
+            callbacks.onChunk(evt.content);
+          } else if (evt.type === "done") {
+            callbacks.onDone(evt);
+          } else if (evt.type === "error") {
+            callbacks.onError(evt);
+          }
+        } catch {
+          // Ignore malformed SSE lines
+        }
+      }
+    }
+  }
+}
+
 // ── Chat history ───────────────────────────────────────────────────
 
 export type ChatHistoryItem = {

@@ -1,4 +1,8 @@
+import json
+from collections.abc import Generator
+
 from fastapi import APIRouter, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import delete, select
 
 from src.api.v1.deps import DbSession, get_current_user
@@ -9,61 +13,35 @@ from src.api.v1.schemas.chat import (
     ChatResponse,
     ReferenceItem,
 )
+from src.core.config import settings
 from src.db.models.chat_history import ChatHistory
 from src.services.audit_service import log_event
-from src.services.chat.service import generate_rag_response
+from src.services.chat.service import generate_rag_response, stream_rag_response
 from src.services.settings.service import get_setting_value
 
 router = APIRouter()
 
-
-def _serialize_history_item(item: ChatHistory) -> ChatHistoryItemResponse:
-    return ChatHistoryItemResponse(
-        id=item.id,
-        prompt=item.prompt,
-        summary=item.summary,
-        pac_code=item.pac_code,
-        references=[
-            ReferenceItem(title=r.get("title", ""), page=r.get("page", ""))
-            for r in (item.references or [])
-        ],
-        robot_config=item.robot_config or {},
-        entry_type=item.entry_type,
-        created_at=item.created_at,
-    )
+_SSE_HEADERS = {
+    "Cache-Control": "no-cache",
+    "X-Accel-Buffering": "no",
+}
 
 
-@router.post("/generate", response_model=ChatResponse)
-def generate_code(
-    request: Request,
+def _save_history_and_prune(
+    db,
+    user,
     payload: ChatRequest,
-    db: DbSession,
-) -> ChatResponse:
-    user = get_current_user(request, db)  # raises 401 if not authenticated
-
-    try:
-        result = generate_rag_response(db, payload)
-    except RuntimeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(exc),
-        ) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Error inesperado al procesar la consulta: {exc}",
-        ) from exc
-
-    # Persist to chat history
-    entry_type = (
-        "code" if result.pac_code and result.pac_code.strip() else "troubleshooting"
-    )
+    summary: str,
+    pac_code: str,
+    references: list,
+) -> None:
+    entry_type = "code" if pac_code.strip() else "troubleshooting"
     history_item = ChatHistory(
         user_id=user.id,
         prompt=payload.prompt,
-        summary=result.summary,
-        pac_code=result.pac_code or "",
-        references=[{"title": r.title, "page": r.page} for r in result.references],
+        summary=summary,
+        pac_code=pac_code,
+        references=references,
         robot_config={
             "robot_type": payload.robot_type,
             "controller": payload.controller,
@@ -82,7 +60,6 @@ def generate_code(
     db.add(history_item)
     db.commit()
 
-    # Keep only the most recent N entries for this user
     max_entries = int(get_setting_value(db, "history_max_entries", "50"))
     keep_ids = (
         select(ChatHistory.id)
@@ -98,22 +75,123 @@ def generate_code(
     )
     db.commit()
 
-    log_event(
-        db,
-        "CHAT_QUERY",
-        "Consulta de chat procesada",
-        actor_id=user.id,
-        actor_email=user.email,
-        resource_type="chat",
-        metadata={
-            "robot_type": payload.robot_type,
-            "entry_type": entry_type,
-            "references_count": len(result.references),
-        },
-        ip_address=request.client.host if request.client else None,
+
+def _serialize_history_item(item: ChatHistory) -> ChatHistoryItemResponse:
+    return ChatHistoryItemResponse(
+        id=item.id,
+        prompt=item.prompt,
+        summary=item.summary,
+        pac_code=item.pac_code,
+        references=[
+            ReferenceItem(title=r.get("title", ""), page=r.get("page", ""))
+            for r in (item.references or [])
+        ],
+        robot_config=item.robot_config or {},
+        entry_type=item.entry_type,
+        created_at=item.created_at,
     )
 
-    return result
+
+@router.post("/generate")
+def generate_code(
+    request: Request,
+    payload: ChatRequest,
+    db: DbSession,
+) -> StreamingResponse:
+    user = get_current_user(request, db)  # raises 401 if not authenticated
+    ip = request.client.host if request.client else None
+
+    if not settings.enable_streaming:
+        # Fallback: run the pipeline synchronously and emit a single done event
+        try:
+            result = generate_rag_response(db, payload)
+        except RuntimeError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(exc),
+            ) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Error inesperado al procesar la consulta: {exc}",
+            ) from exc
+
+        refs = [{"title": r.title, "page": r.page} for r in result.references]
+        _save_history_and_prune(
+            db, user, payload, result.summary, result.pac_code, refs
+        )
+        entry_type = "code" if result.pac_code.strip() else "troubleshooting"
+        log_event(
+            db,
+            "CHAT_QUERY",
+            "Consulta de chat procesada",
+            actor_id=user.id,
+            actor_email=user.email,
+            resource_type="chat",
+            metadata={
+                "robot_type": payload.robot_type,
+                "entry_type": entry_type,
+                "references_count": len(result.references),
+            },
+            ip_address=ip,
+        )
+
+        def _single() -> Generator[str, None, None]:
+            yield f"data: {json.dumps({'type': 'done', 'summary': result.summary, 'pac_code': result.pac_code, 'references': refs})}\n\n"
+
+        return StreamingResponse(
+            _single(), media_type="text/event-stream", headers=_SSE_HEADERS
+        )
+
+    # ── Streaming path ────────────────────────────────────────────
+    def _stream() -> Generator[str, None, None]:
+        summary = ""
+        pac_code = ""
+        references: list = []
+        entry_type = "troubleshooting"
+        try:
+            for sse_line in stream_rag_response(db, payload):
+                yield sse_line
+                # Intercept the done event to capture parsed fields for history
+                if sse_line.startswith("data: "):
+                    try:
+                        evt = json.loads(sse_line[6:].strip())
+                        if evt.get("type") == "done":
+                            summary = evt.get("summary", "")
+                            pac_code = evt.get("pac_code", "")
+                            references = evt.get("references", [])
+                            entry_type = (
+                                "code" if pac_code.strip() else "troubleshooting"
+                            )
+                    except Exception:
+                        pass
+        except Exception:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Pipeline fallido'})}\n\n"
+            return
+
+        # After stream finishes: persist history and audit
+        try:
+            _save_history_and_prune(db, user, payload, summary, pac_code, references)
+            log_event(
+                db,
+                "CHAT_QUERY",
+                "Consulta de chat procesada",
+                actor_id=user.id,
+                actor_email=user.email,
+                resource_type="chat",
+                metadata={
+                    "robot_type": payload.robot_type,
+                    "entry_type": entry_type,
+                    "references_count": len(references),
+                },
+                ip_address=ip,
+            )
+        except Exception:
+            pass  # Never fail the response due to persistence errors
+
+    return StreamingResponse(
+        _stream(), media_type="text/event-stream", headers=_SSE_HEADERS
+    )
 
 
 @router.get("/history", response_model=ChatHistoryListResponse)

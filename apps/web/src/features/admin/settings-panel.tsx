@@ -94,7 +94,7 @@ function SettingRow({
 
       {isTextarea ? (
         <textarea
-          className={`${inputClass} min-h-[200px] font-mono text-xs resize-y`}
+          className={`${inputClass} min-h-50 font-mono text-xs resize-y`}
           value={value}
           onChange={(e) => setValue(e.target.value)}
         />

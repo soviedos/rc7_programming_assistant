@@ -11,7 +11,7 @@ import {
   CanvasPanel,
 } from "@/features/chat";
 import type { ChatConfig, Message, WorkspaceMode } from "@/features/chat";
-import { sendChatMessage, fetchChatHistory } from "@/lib/chat";
+import { streamChatMessage, fetchChatHistory } from "@/lib/chat";
 import type { ChatHistoryItem } from "@/lib/chat";
 
 export default function ChatPage() {
@@ -42,35 +42,78 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, userMsg]);
     setIsSending(true);
 
-    try {
-      const apiResp = await sendChatMessage(text, config, currentCode);
+    const assistantId = (Date.now() + 1).toString();
 
-      const assistantMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: apiResp.summary,
-        code: apiResp.pac_code || undefined,
-        references: apiResp.references.map((r) => ({
-          manual: r.title,
-          section: r.page,
-        })),
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-      // Refresh history after successful response
-      loadHistory();
+    try {
+      await streamChatMessage(text, config, currentCode, {
+        onFirstChunk: () => {
+          setIsSending(false);
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: assistantId,
+              role: "assistant",
+              content: "",
+              timestamp: new Date(),
+              isStreaming: true,
+            },
+          ]);
+        },
+        onChunk: (_content) => {
+          // Chunks are discarded; the final summary is shown on done
+        },
+        onDone: (evt) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    isStreaming: false,
+                    content: evt.summary,
+                    code: evt.pac_code || undefined,
+                    references: evt.references.map((r) => ({
+                      manual: r.title,
+                      section: r.page,
+                    })),
+                  }
+                : m,
+            ),
+          );
+          loadHistory();
+        },
+        onError: (evt) => {
+          setMessages((prev) => {
+            const hasPlaceholder = prev.some((m) => m.id === assistantId);
+            const errorMsg: Message = {
+              id: assistantId,
+              role: "assistant",
+              isError: true,
+              content: evt.message || "No se pudo obtener respuesta del asistente.",
+              timestamp: new Date(),
+            };
+            return hasPlaceholder
+              ? prev.map((m) => (m.id === assistantId ? errorMsg : m))
+              : [...prev, errorMsg];
+          });
+        },
+      });
     } catch (err) {
-      const errorMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        isError: true,
-        content:
-          err instanceof Error
-            ? err.message
-            : "No se pudo obtener respuesta del asistente.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
+      setMessages((prev) => {
+        const hasPlaceholder = prev.some((m) => m.id === assistantId);
+        const errorMsg: Message = {
+          id: assistantId,
+          role: "assistant",
+          isError: true,
+          content:
+            err instanceof Error
+              ? err.message
+              : "No se pudo obtener respuesta del asistente.",
+          timestamp: new Date(),
+        };
+        return hasPlaceholder
+          ? prev.map((m) => (m.id === assistantId ? errorMsg : m))
+          : [...prev, errorMsg];
+      });
     } finally {
       setIsSending(false);
     }

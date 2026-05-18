@@ -19,6 +19,7 @@ export type Message = {
   references?: MessageReference[];
   timestamp: Date;
   isError?: boolean;
+  isStreaming?: boolean;
 };
 
 // ── Component ──────────────────────────────────────────────────────
@@ -218,19 +219,30 @@ export function AiChatSidebar({
                   </div>
                 </div>
               ) : (
-                /* AI response — reasoning + references */
+                /* AI response — reasoning + references (or streaming state) */
                 <div className="space-y-2 pl-1 border-l-2 border-accent/20">
                   <div className="flex items-center gap-1.5 pl-2">
                     <Bot className="h-3 w-3 text-accent shrink-0" />
                     <span className="text-[10px] text-accent font-medium">Gemini</span>
                   </div>
 
-                  <div className="pl-3 text-[11px] text-ink leading-relaxed">
-                    <p className="whitespace-pre-wrap">{msg.content}</p>
-                  </div>
+                  {msg.isStreaming ? (
+                    <div className="pl-3 flex items-center gap-1.5 text-[11px] text-muted animate-pulse">
+                      <span>Generando respuesta</span>
+                      <span className="inline-flex gap-0.5">
+                        <span className="h-1 w-1 rounded-full bg-accent animate-bounce [animation-delay:0ms]" />
+                        <span className="h-1 w-1 rounded-full bg-accent animate-bounce [animation-delay:150ms]" />
+                        <span className="h-1 w-1 rounded-full bg-accent animate-bounce [animation-delay:300ms]" />
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="pl-3 text-[11px] text-ink leading-relaxed">
+                      <p className="whitespace-pre-wrap">{msg.content}</p>
+                    </div>
+                  )}
 
                   {/* Sources */}
-                  {msg.references && msg.references.length > 0 && (
+                  {!msg.isStreaming && msg.references && msg.references.length > 0 && (
                     <div className="pl-3 pt-1 space-y-1.5">
                       <p className="text-[9px] text-muted uppercase tracking-wide font-semibold flex items-center gap-1">
                         <BookOpen className="h-2.5 w-2.5" />

@@ -82,7 +82,9 @@ def test_admin_status_route(client: TestClient, db_session: Session) -> None:
         uploaded_by_email="activo@ucenfotec.ac.cr",
     )
 
-    db_session.add_all([active_user, inactive_user, indexed_manual, pending_manual, processing_manual])
+    db_session.add_all(
+        [active_user, inactive_user, indexed_manual, pending_manual, processing_manual]
+    )
     db_session.commit()
 
     client.post(

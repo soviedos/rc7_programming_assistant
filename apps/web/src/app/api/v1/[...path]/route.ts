@@ -7,8 +7,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 
-// Allow up to 2 minutes for long-running requests (e.g. Gemini RAG pipeline)
-export const maxDuration = 120;
+// Allow up to 5 minutes for SSE streaming responses
+export const maxDuration = 300;
 
 const INTERNAL_API = process.env.INTERNAL_API_URL ?? "http://api:8000";
 
@@ -36,6 +36,24 @@ async function proxy(req: NextRequest, path: string): Promise<NextResponse> {
     headers,
     body,
   });
+
+  // For SSE responses: pipe the stream directly without buffering
+  const contentType = upstream.headers.get("content-type") ?? "";
+  if (contentType.includes("text/event-stream")) {
+    const sseHeaders = new Headers({
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "X-Accel-Buffering": "no",
+    });
+    upstream.headers.forEach((value, key) => {
+      const lower = key.toLowerCase();
+      if (lower === "set-cookie") sseHeaders.append("Set-Cookie", value);
+    });
+    return new NextResponse(upstream.body, {
+      status: upstream.status,
+      headers: sseHeaders,
+    });
+  }
 
   // Use arrayBuffer to preserve binary data (e.g. PDFs) without UTF-8 corruption
   const data = await upstream.arrayBuffer();
