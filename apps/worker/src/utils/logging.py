@@ -14,6 +14,22 @@ _DATE_FORMAT = "%Y-%m-%dT%H:%M:%S"
 _logger: logging.Logger | None = None
 
 
+class _SysStdoutProxy:
+    """Proxy that always writes to the current sys.stdout.
+
+    Using sys.stdout directly in StreamHandler captures the reference at
+    handler-creation time, which breaks pytest capsys (capsys replaces
+    sys.stdout per-test, but the handler still holds the original stream).
+    This proxy defers the lookup so capsys interception works correctly.
+    """
+
+    def write(self, msg: str) -> int:
+        return sys.stdout.write(msg)
+
+    def flush(self) -> None:
+        sys.stdout.flush()
+
+
 def _get_logger() -> logging.Logger:
     global _logger
     if _logger is not None:
@@ -31,7 +47,7 @@ def _get_logger() -> logging.Logger:
     )
     file_handler.setFormatter(formatter)
 
-    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler = logging.StreamHandler(_SysStdoutProxy())
     stream_handler.setFormatter(formatter)
 
     logger = logging.getLogger("worker")
