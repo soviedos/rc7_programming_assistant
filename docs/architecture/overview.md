@@ -74,45 +74,25 @@ Reverse proxy. Configuración especial para rutas SSE (`/api/v1/chat/`):
 
 ---
 
-## Flujo RAG + SSE streaming
+## Flujo RAG (implementado)
 
-```text
-POST /api/v1/chat/generate
-         │
-         ▼
-[Fase 1 — HyDE]
-Gemini recibe la consulta del usuario (sin contexto RAG).
-Genera una respuesta hipotética en texto natural.
-         │
-         ▼
-[Fase 2 — Retrieval]
-Embedding de (consulta + primeros 600 chars de la respuesta hipotética)
-    → gemini-embedding-001 (768 dims, task_type=RETRIEVAL_QUERY)
-    → pgvector similarity scan (coseno) sobre manual_chunks
-    → top-k chunks seleccionados (k configurable, default 6)
-    → boost de similitud por categoría del manual (programming ×1.30, etc.)
-         │
-         ▼
-[Fase 3 — Context budget]
-Chunks ordenados por score descendente.
-Se incluyen hasta agotar el presupuesto de caracteres (default 12 000).
-Formato: "[Título — pág. N]\nTexto del chunk"
-         │
-         ▼
-[Fase 4 — Generación y streaming]
-Gemini recibe system prompt (reglas PAC desde settings) + contexto RAG + consulta.
-generate_content_stream() → chunks de texto yieldeados como SSE:
-  data: {"type":"chunk","content":"..."}
-  ...
-  data: {"type":"done","summary":"...","pac_code":"...","references":[...]}
-
-Si no hay embeddings disponibles: se usa solo el system prompt (sin RAG).
-         │
-         ▼
-[Post-stream]
-Historial guardado en chat_history (poda automática al máximo configurado).
-Evento CHAT_QUERY registrado en audit_log.
-```
+1. Administrador carga un manual PDF → MinIO
+2. Backend registra el documento con estado `pending`
+3. Worker detecta el manual por polling a PostgreSQL
+4. Worker descarga el PDF, extrae texto con pypdf
+5. Chunking semántico respetando estructura del documento
+6. Gemini revisa y autocorrige cada chunk
+7. Chunks vectorizados con gemini-embedding-001 (768 dim) → pgvector
+8. Usuario envía consulta + configuración del robot (modelo, controlador, versión)
+9. Fase 1 (HyDE): Gemini genera respuesta hipotética sin contexto documental
+10. Embedding de (consulta + respuesta hipotética) → búsqueda vectorial pgvector
+11. Fase 2 (Retrieval): top-k chunks por similitud coseno con boost por categoría
+    (top-k configurable vía módulo settings, default: 6)
+12. Fase 3 (Contexto): construcción del contexto con presupuesto de caracteres
+    (configurable vía módulo settings, default: 12 000 chars)
+13. Fase 4 (Respuesta final): Gemini con contexto RAG → JSON estructurado
+    con `summary`, `pac_code` y `references` — transmitido vía SSE
+14. Frontend recibe chunks en tiempo real, reconstruye la respuesta
 
 **Fallback sin streaming** (`ENABLE_STREAMING=false`): el pipeline se ejecuta de forma
 síncrona con `generate_rag_response()` y se emite un único evento `done`.
@@ -155,24 +135,23 @@ Listo para retrieval en próximas consultas de chat
 
 ---
 
-## Módulo settings
+### Módulo settings
 
-Los parámetros del pipeline RAG y de Gemini son configurables en caliente desde la
-consola de administración sin reiniciar el stack. Se almacenan en la tabla
-`system_settings` y se leen en cada request.
-
-Parámetros clave: `gemini_temperature`, `gemini_max_tokens`, `rag_top_k_chunks`,
-`rag_context_budget_chars`, `system_prompt_pac`, `history_max_entries`.
+Permite configurar en tiempo real los parámetros del modelo Gemini y los prompts del
+sistema desde la consola administrativa. Los cambios se persisten en la tabla
+`system_settings` y se leen en cada request del pipeline RAG, sin necesidad de
+reiniciar el servicio.
 
 Ver [docs/backend/settings-module.md](../backend/settings-module.md) para la lista completa.
 
 ---
 
-## Módulo audit
+### Módulo audit
 
-Todos los eventos de administración, autenticación y pipeline de chat se registran en
-`audit_log`. El servicio `log_event()` nunca lanza excepción — los fallos de
-persistencia se registran en el logger del proceso sin degradar la funcionalidad.
+Registra eventos significativos del sistema en la tabla `audit_log`. El servicio de
+auditoría nunca lanza excepciones — un fallo de logging no puede degradar el flujo
+principal. Se registran acciones administrativas, eventos del pipeline de ingestión y
+metadatos de consultas de chat (sin almacenar contenido de prompts o respuestas).
 
 Ver [docs/backend/audit-module.md](../backend/audit-module.md) para la lista de eventos.
 
@@ -184,7 +163,7 @@ Ver [docs/backend/audit-module.md](../backend/audit-module.md) para la lista de 
 |---|---|
 | **Simplicidad operativa** | Un solo `docker compose up` levanta todo el sistema |
 | **Seguridad centralizada** | Auth y autorización resueltos exclusivamente en el backend |
-| **Observabilidad sin acoplamiento** | Audit nunca rompe el flujo principal |
-| **Configurabilidad en caliente** | Settings en DB eliminan reinicios para ajustar parámetros |
+| **Observabilidad** | El módulo audit registra eventos del sistema sin impactar el flujo principal (fail-safe design) |
+| **Configurabilidad** | Parámetros del modelo Gemini y prompts del sistema configurables en tiempo real vía consola administrativa |
 | **Streaming first** | SSE reduce la latencia percibida en respuestas largas del LLM |
 | **Despliegue reproducible** | Contenedores con healthchecks y dependencias declarativas |

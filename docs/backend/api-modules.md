@@ -52,9 +52,12 @@ La autenticación se realiza mediante cookie HttpOnly (`rc7_session`) con JWT fi
 **Request body:**
 ```json
 {
+  "prompt": "¿Cómo muevo el brazo a una posición absoluta?",
   "robot_type": "VP-6242G",
-  "entry_type": "program",
-  "user_message": "¿Cómo muevo el brazo a una posición absoluta?"
+  "controller": "RC7",
+  "io_profile": "default",
+  "payload_kg": 2.0,
+  "tool_number": 1
 }
 ```
 
@@ -68,7 +71,7 @@ data: {"type": "done", "summary": "...", "pac_code": "MOVE P1,S=50", "references
 
 **Evento de error:**
 ```
-data: {"type": "error", "content": "Error al conectar con Gemini"}
+data: {"type": "error", "message": "Pipeline fallido"}
 ```
 
 ---
