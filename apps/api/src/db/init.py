@@ -2,7 +2,7 @@ from sqlalchemy import inspect, select, text
 
 from src.core.config import settings
 from src.db.base import Base
-from src.db.models import ChatHistory, RolePermission, User
+from src.db.models import ChatHistory, RolePermission, SystemSetting, User
 from src.db.session import SessionLocal, engine
 from src.services.auth.passwords import hash_password
 
@@ -52,8 +52,10 @@ def initialize_database() -> None:
     ensure_manual_columns()
     ensure_chunk_embedding_column()
     ensure_chat_history_table()
+    ensure_settings_table()
     seed_bootstrap_admin()
     seed_role_permissions()
+    seed_default_settings()
 
 
 def ensure_user_columns() -> None:
@@ -186,3 +188,21 @@ def seed_role_permissions() -> None:
             )
 
         session.commit()
+
+
+def ensure_settings_table() -> None:
+    """Create the system_settings table if it does not exist yet."""
+    inspector = inspect(engine)
+    if "system_settings" in set(inspector.get_table_names()):
+        return
+    SystemSetting.__table__.create(bind=engine)
+
+
+def seed_default_settings() -> None:
+    """Insert default system settings for any keys not yet present."""
+    from src.services.settings.service import (
+        seed_if_empty,
+    )  # local import avoids circularity
+
+    with SessionLocal() as session:
+        seed_if_empty(session)

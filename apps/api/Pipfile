@@ -4,6 +4,17 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+fastapi = "*"
+httpx = "*"
+pytest = "*"
+sqlalchemy = "*"
+sqlalchemy-utils = "*"
+pydantic = "*"
+alembic = "*"
+python-dotenv = "*"
+psycopg2-binary = "*"
+pydantic-settings = "*"
+psycopg = {extras = ["binary"], version = "*"}
 
 [dev-packages]
 

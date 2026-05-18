@@ -11,6 +11,7 @@ from src.api.v1.schemas.chat import (
 )
 from src.db.models.chat_history import ChatHistory
 from src.services.chat.service import generate_rag_response
+from src.services.settings.service import get_setting_value
 
 router = APIRouter()
 
@@ -80,12 +81,13 @@ def generate_code(
     db.add(history_item)
     db.commit()
 
-    # Keep only the 50 most recent entries for this user
+    # Keep only the most recent N entries for this user
+    max_entries = int(get_setting_value(db, "history_max_entries", "50"))
     keep_ids = (
         select(ChatHistory.id)
         .where(ChatHistory.user_id == user.id)
         .order_by(ChatHistory.created_at.desc())
-        .limit(50)
+        .limit(max_entries)
         .scalar_subquery()
     )
     db.execute(

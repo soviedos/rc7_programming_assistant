@@ -2,12 +2,21 @@ from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import Text, create_engine
+from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
 from sqlalchemy.orm import Session, sessionmaker
 
 import src.main as main_module
 from src.db.base import Base
 from src.db.session import get_db_session
+
+# SQLite does not natively support PostgreSQL's ARRAY type.
+# Teach the SQLite DDL type compiler to render ARRAY columns as TEXT so that
+# Base.metadata.create_all() succeeds in SQLite-backed test fixtures.
+def _visit_ARRAY(self, type_, **kw):  # noqa: N802
+    return self.process(Text(), **kw)
+
+SQLiteTypeCompiler.visit_ARRAY = _visit_ARRAY  # type: ignore[attr-defined]
 from src.main import create_app
 
 
