@@ -8,7 +8,7 @@ ENV PYTHONUNBUFFERED=1
 COPY apps/worker/pyproject.toml ./
 COPY apps/worker/src ./src
 
-RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -e ".[dev]"
 
 # Run as non-root for security
 RUN addgroup --system --gid 1001 appgroup && \

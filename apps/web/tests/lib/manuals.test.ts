@@ -17,6 +17,7 @@ describe("manuals helpers", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("loads and normalizes the admin status", async () => {
@@ -55,15 +56,18 @@ describe("manuals helpers", () => {
               storage_key: "manuals/2026/04/20/abc.pdf",
               content_type: "application/pdf",
               size_bytes: 2048,
+              sha256: null,
               status: "indexed",
               chunk_count: 18,
               robot_model: "VP-6242",
               controller_version: "RC7.2",
               document_language: "en",
+              categories: [],
               notes: "Manual principal",
               last_error: null,
               uploaded_by_user_id: 1,
               uploaded_by_email: "admin@ucenfotec.ac.cr",
+              processing_started_at: null,
               indexed_at: "2026-04-20T15:00:00Z",
               created_at: "2026-04-20T14:00:00Z",
               updated_at: "2026-04-20T15:00:00Z",
@@ -88,15 +92,18 @@ describe("manuals helpers", () => {
         storageKey: "manuals/2026/04/20/abc.pdf",
         contentType: "application/pdf",
         sizeBytes: 2048,
+        sha256: null,
         status: "indexed",
         chunkCount: 18,
         robotModel: "VP-6242",
         controllerVersion: "RC7.2",
         documentLanguage: "en",
+        categories: [],
         notes: "Manual principal",
         lastError: null,
         uploadedByUserId: 1,
         uploadedByEmail: "admin@ucenfotec.ac.cr",
+        processingStartedAt: null,
         indexedAt: "2026-04-20T15:00:00Z",
         createdAt: "2026-04-20T14:00:00Z",
         updatedAt: "2026-04-20T15:00:00Z",
@@ -204,6 +211,7 @@ describe("manuals helpers", () => {
   });
 
   it("builds open URL for a manual", () => {
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "http://localhost:8000");
     expect(getManualOpenUrl(5)).toBe("http://localhost:8000/api/v1/manuals/5/file");
   });
 
