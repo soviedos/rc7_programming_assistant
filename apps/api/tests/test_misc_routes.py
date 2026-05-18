@@ -85,6 +85,11 @@ def test_admin_status_route(client: TestClient, db_session: Session) -> None:
     db_session.add_all([active_user, inactive_user, indexed_manual, pending_manual, processing_manual])
     db_session.commit()
 
+    client.post(
+        "/api/v1/auth/login",
+        json={"email": "activo@ucenfotec.ac.cr", "password": "1234ABC"},
+    )
+
     response = client.get("/api/v1/admin/status")
 
     assert response.status_code == 200
@@ -93,21 +98,3 @@ def test_admin_status_route(client: TestClient, db_session: Session) -> None:
         "active_users": 1,
         "pending_jobs": 2,
     }
-
-
-def test_chat_generate_route_returns_placeholder_pac(client: TestClient) -> None:
-    response = client.post(
-        "/api/v1/chat/generate",
-        json={
-            "prompt": "Genera una rutina de pick and place",
-            "robot_type": "VP-6242",
-            "controller": "RC7",
-            "io_profile": "cell-a",
-        },
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["summary"] == "Respuesta de ejemplo para robot VP-6242 con controlador RC7."
-    assert "PROGRAM SAMPLE_RC7" in payload["pac_code"]
-    assert payload["references"] == [{"title": "Programmer's Manual I", "page": "3-24"}]

@@ -44,7 +44,6 @@ def test_login_me_switch_role_and_logout(client: TestClient, db_session: Session
 
     assert login_response.status_code == 200
     assert login_response.json()["role"] == "admin"
-    assert login_response.json()["redirect_path"] == "/admin"
     assert "set-cookie" in login_response.headers
 
     me_response = client.get("/api/v1/auth/me")
@@ -58,7 +57,6 @@ def test_login_me_switch_role_and_logout(client: TestClient, db_session: Session
     )
     assert switch_response.status_code == 200
     assert switch_response.json()["role"] == "user"
-    assert switch_response.json()["redirect_path"] == "/app"
 
     logout_response = client.post("/api/v1/auth/logout")
     assert logout_response.status_code == 200

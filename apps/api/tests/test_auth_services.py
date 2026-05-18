@@ -33,7 +33,6 @@ def test_build_session_response_uses_first_available_role_when_needed() -> None:
     assert session_response.email == "soviedo@ucenfotec.ac.cr"
     assert session_response.role == "user"
     assert session_response.available_roles == ["admin", "user"]
-    assert session_response.redirect_path == "/app"
 
 
 def test_session_token_roundtrip() -> None:

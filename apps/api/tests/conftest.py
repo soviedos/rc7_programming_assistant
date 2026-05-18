@@ -1,55 +1,81 @@
+from __future__ import annotations
+
+import os
 from collections.abc import Generator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Text, create_engine
-from sqlalchemy.dialects.sqlite.base import SQLiteTypeCompiler
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 import src.main as main_module
 from src.db.base import Base
 from src.db.session import get_db_session
-
-
-# SQLite does not natively support PostgreSQL's ARRAY type.
-# Teach the SQLite DDL type compiler to render ARRAY columns as TEXT so that
-# Base.metadata.create_all() succeeds in SQLite-backed test fixtures.
-def _visit_ARRAY(self, type_, **kw):  # noqa: N802
-    return self.process(Text(), **kw)
-
-
-SQLiteTypeCompiler.visit_ARRAY = _visit_ARRAY  # type: ignore[attr-defined]
-
-
-# SQLite does not support PostgreSQL's JSONB type.
-# Render it as TEXT for DDL in SQLite-backed test fixtures.
-def _visit_JSONB(self, type_, **kw):  # noqa: N802
-    return self.process(Text(), **kw)
-
-
-SQLiteTypeCompiler.visit_JSONB = _visit_JSONB  # type: ignore[attr-defined]
 from src.main import create_app
 
+# ---------------------------------------------------------------------------
+# PostgreSQL test database
+# Uses the same Postgres instance as the app but a dedicated "rc7_test" DB
+# so tests never touch production data. Tables are created once per session
+# and truncated after each test for isolation.
+# ---------------------------------------------------------------------------
 
-@pytest.fixture()
-def test_engine(tmp_path):
-    database_path = tmp_path / "test.sqlite3"
-    engine = create_engine(
-        f"sqlite:///{database_path}",
-        connect_args={"check_same_thread": False},
+_PG_USER = os.getenv("POSTGRES_USER", "postgres")
+_PG_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
+_PG_HOST = os.getenv("POSTGRES_HOST", "postgres")
+_PG_PORT = os.getenv("POSTGRES_PORT", "5432")
+_TEST_DB = "rc7_test"
+
+_TEST_DATABASE_URL = (
+    f"postgresql+psycopg://{_PG_USER}:{_PG_PASSWORD}"
+    f"@{_PG_HOST}:{_PG_PORT}/{_TEST_DB}"
+)
+
+
+def _ensure_test_db() -> None:
+    """Create the rc7_test database if it does not already exist."""
+    admin_url = (
+        f"postgresql+psycopg://{_PG_USER}:{_PG_PASSWORD}"
+        f"@{_PG_HOST}:{_PG_PORT}/postgres"
     )
-    Base.metadata.create_all(bind=engine)
+    admin_engine = create_engine(admin_url, isolation_level="AUTOCOMMIT")
+    with admin_engine.connect() as conn:
+        exists = conn.execute(
+            text("SELECT 1 FROM pg_database WHERE datname = :name"),
+            {"name": _TEST_DB},
+        ).scalar()
+        if not exists:
+            conn.execute(text(f"CREATE DATABASE {_TEST_DB}"))  # noqa: S608
+    admin_engine.dispose()
 
-    yield engine
 
-    Base.metadata.drop_all(bind=engine)
-    engine.dispose()
+@pytest.fixture(scope="session")
+def engine():
+    _ensure_test_db()
+    eng = create_engine(_TEST_DATABASE_URL)
+    Base.metadata.create_all(bind=eng)
+    yield eng
+    Base.metadata.drop_all(bind=eng)
+    eng.dispose()
+
+
+@pytest.fixture(autouse=True)
+def clean_tables(engine):
+    """Truncate all tables after each test to guarantee a clean slate."""
+    yield
+    table_names = ", ".join(
+        f'"{t.name}"' for t in reversed(Base.metadata.sorted_tables)
+    )
+    if table_names:
+        with engine.connect() as conn:
+            conn.execute(text(f"TRUNCATE {table_names} RESTART IDENTITY CASCADE"))  # noqa: S608
+            conn.commit()
 
 
 @pytest.fixture()
-def session_factory(test_engine):
+def session_factory(engine):
     return sessionmaker(
-        bind=test_engine,
+        bind=engine,
         autoflush=False,
         autocommit=False,
         expire_on_commit=False,
