@@ -1,72 +1,134 @@
-# Ingestión de Manuales
+# Ingestión de Manuales — Pipeline Documental
 
-## Objetivo
-
-Transformar manuales PDF oficiales de DENSO en una base de conocimiento vectorial recuperable por semántica.
-
----
-
-## Supuestos
-
-| Supuesto | Detalle |
-|---|---|
-| Calidad de los PDFs | Los manuales tienen buena calidad digital; el texto es extraíble sin depender de OCR |
-| Estructura documental | Los documentos siguen una estructura de capítulos y secciones identificable |
+El pipeline de ingestión convierte PDFs de manuales DENSO RC7 en chunks de texto embebidos
+y almacenados en pgvector, listos para el retrieval del chat RAG.
 
 ---
 
-## Pipeline de ingestión
+## Flujo completo
 
 ```text
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Upload    │───▶│   Parsing   │───▶│  Chunking   │───▶│  Revisión   │───▶│ Embeddings  │
-│  (MinIO)    │    │  (pypdf)    │    │ (semántico) │    │  semántica  │    │  (Gemini)   │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘    └──────┬──────┘
-                                                                                    │
-                                                                             ┌──────▼──────┐
-                                                                             │ Indexación  │
-                                                                             │ (pgvector)  │
-                                                                             └─────────────┘
+Admin → POST /api/v1/manuals/
+    │
+    ├─ MinIO: upload PDF (bucket rc7-manuals)
+    └─ PostgreSQL: INSERT manual (status=pending)
+             │
+             ▼
+    Worker (polling SQL cada ~5 s)
+    claim_next_pending_manual()
+    SELECT ... FOR UPDATE SKIP LOCKED → status=processing
+             │
+             ▼
+    [Etapa 1] Extracción de texto
+    pypdf → extract_pdf_text_by_page()
+    ├─ Descarga PDF desde MinIO
+    └─ Texto extraído por página, preservando números de página
+             │
+             ▼
+    [Etapa 2] Chunking semántico
+    build_text_chunks()
+    ├─ Segmentación respetando párrafos naturales
+    ├─ Tamaño target y solapamiento configurables en código
+    └─ Cada chunk lleva: texto, página de inicio, página de fin
+             │
+             ▼
+    [Etapa 3] Revisión semántica con Gemini
+    GeminiSemanticReviewer (muestra configurable del total de chunks)
+    ├─ Evalúa: coherence_score, completeness_score, boundary_quality_score
+    ├─ Acción por chunk: keep | merge | split | regenerate
+    └─ apply_safe_chunk_autofixes(): aplica correcciones automáticas seguras
+    Resultados guardados en: manual_chunk_reviews, manual_review_summaries
+             │
+             ▼
+    [Etapa 4] Embedding
+    embed_texts()
+    ├─ Modelo: gemini-embedding-001 (768 dimensiones)
+    ├─ task_type: RETRIEVAL_DOCUMENT
+    ├─ Procesado en lote (batch)
+    └─ Timeout por lote configurable
+             │
+             ▼
+    INSERT manual_chunks (texto + embedding REAL[] + página)
+    UPDATE manual (status=indexed)  ←── estado final exitoso
+             │
+             ▼
+    Chunks disponibles para retrieval en próximas consultas de chat
 ```
 
-### 1. Subida del PDF
-
-El archivo se sube a MinIO y se registra en la base de datos con estado `pending`.
-
-### 2. Parsing
-
-El worker detecta el manual pendiente mediante polling a PostgreSQL, descarga el PDF desde MinIO y extrae el texto página a página con `pypdf`.
-
-### 3. Chunking semántico
-
-El texto extraído se divide en fragmentos de tamaño controlado, respetando párrafos y estructura del documento.
-
-### 4. Revisión semántica
-
-Cada chunk pasa por Gemini para verificar coherencia y corregir artefactos de extracción (saltos de línea espurios, encabezados fragmentados, etc.). Los chunks con contenido insuficiente se descartan.
-
-### 5. Generación de embeddings
-
-Los chunks revisados se vectorizan en lotes con `gemini-embedding-001` (768 dimensiones, task type `RETRIEVAL_DOCUMENT`).
-
-### 6. Indexación
-
-Chunks y vectores se persisten en PostgreSQL + pgvector. El estado del manual se actualiza a `ready` al terminar o `failed` si hay errores irrecuperables.
+**En caso de error:** `status=failed`, se guarda el mensaje de error en la tabla del manual.
+La ingestión puede reintentarse desde la consola de administración con `POST /api/v1/manuals/{id}/retry`.
 
 ---
 
-## Estructura de un chunk indexado
+## Estados del manual
 
-| Campo | Descripción |
+| Estado | Significado |
 |---|---|
-| `text` | Contenido textual del fragmento |
-| `page` | Número de página en el PDF original |
-| `chunk_index` | Posición del chunk dentro del manual |
-| `embedding` | Vector de 768 dimensiones (ARRAY REAL) |
-| `manual_id` | Referencia al manual de origen |
+| `pending` | Subido pero aún no procesado por el worker |
+| `processing` | Worker actualmente procesando el manual |
+| `indexed` | Ingestión completada; chunks disponibles para RAG |
+| `failed` | Ingestión fallida; el campo `error_message` contiene el detalle |
+
+Un manual atascado en `processing` (worker reiniciado en medio de la ingestión) puede liberarse
+con `POST /api/v1/manuals/cleanup-stale-processing` (admin).
 
 ---
 
-## Justificación
+## Parámetros configurables
 
-No basta con recuperar texto semánticamente similar. El sistema debe filtrar el contexto por la configuración técnica del robot del usuario para evitar respuestas que apliquen a un modelo diferente o una versión incompatible del controlador.
+Los siguientes parámetros afectan al retrieval en el pipeline RAG y son ajustables en caliente
+desde la consola de administración (sin reiniciar el stack):
+
+| Parámetro (clave en settings) | Default | Efecto |
+|---|---|---|
+| `rag_top_k_chunks` | `6` | Número de chunks recuperados por consulta en la búsqueda coseno |
+| `rag_context_budget_chars` | `12000` | Presupuesto total de caracteres de contexto enviado a Gemini en Fase 4 |
+
+Ver [docs/backend/settings-module.md](../backend/settings-module.md) para la tabla completa.
+
+---
+
+## Revisión semántica — detalles
+
+La revisión semántica (`GeminiSemanticReviewer`) evalúa una muestra de los chunks generados
+con Gemini para detectar problemas de calidad en la segmentación:
+
+| Métrica | Descripción |
+|---|---|
+| `coherence_score` | El chunk tiene sentido completo por sí solo (0.0–1.0) |
+| `completeness_score` | El chunk no está cortado a mitad de una idea (0.0–1.0) |
+| `boundary_quality_score` | Los bordes del chunk coinciden con límites naturales (0.0–1.0) |
+
+**Acciones de autocorrección seguras** (`apply_safe_chunk_autofixes`):
+- `keep` — chunk aceptado sin modificación
+- `merge` — chunk muy corto fusionado con el siguiente
+- `split` — chunk muy largo dividido en mitades iguales
+- `regenerate` — chunk regenerado con prompt de reformulación (no implementado aún; tratado como `keep`)
+
+Los resultados agregados por manual se almacenan en `manual_review_summaries` y son
+consultables desde la consola de administración en `/api/v1/manuals/review-summaries`.
+
+---
+
+## Retrieval — pipeline RAG (Fase 2)
+
+Durante el chat, la búsqueda de chunks utiliza:
+
+1. **Embedding de la consulta + respuesta hipotética HyDE** (768 dims, task_type=RETRIEVAL_QUERY)
+2. **Búsqueda coseno** sobre `manual_chunks` (solo manuales con `status=indexed`)
+3. **Boost por categoría:** los manuales de programación (`programming`) reciben un multiplicador
+   de similitud adicional (×1.30) para priorizar contenido relevante
+4. **Top-k** seleccionado según `rag_top_k_chunks` (configurable)
+5. **Budget:** chunks incluidos hasta agotar `rag_context_budget_chars` (configurable)
+
+---
+
+## Comandos de administración
+
+| Endpoint | Descripción |
+|---|---|
+| `POST /api/v1/manuals/` | Subir nuevo PDF y disparar ingestión |
+| `POST /api/v1/manuals/{id}/retry` | Reintentar ingestión en manual `failed` |
+| `POST /api/v1/manuals/cleanup-stale-processing` | Liberar manuales atascados en `processing` |
+| `GET /api/v1/manuals/review-summaries` | Ver métricas de revisión semántica por manual |
+| `DELETE /api/v1/manuals/{id}` | Eliminar manual, chunks, embeddings y PDF de MinIO |
