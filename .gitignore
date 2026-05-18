@@ -17,3 +17,6 @@ storage/data/
 storage/tmp/
 apps/api/.venv/
 apps/worker/.venv/
+backups/
+migration_export_*/
+logs/

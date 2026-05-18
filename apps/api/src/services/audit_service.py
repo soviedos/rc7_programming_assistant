@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-import sys
+import logging
 import uuid
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from src.db.models.audit import AuditLog
+
+_logger = logging.getLogger(__name__)
 
 
 def log_event(
@@ -37,7 +39,7 @@ def log_event(
         db.add(entry)
         db.commit()
     except Exception as exc:
-        print(f"[audit] ERROR logging event {event_type}: {exc}", file=sys.stderr)
+        _logger.error("Error logging audit event %s: %s", event_type, exc)
 
 
 def get_audit_logs(

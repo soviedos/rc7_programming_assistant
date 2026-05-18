@@ -57,10 +57,16 @@ def serialize_role_permission(permission: RolePermission) -> RolePermissionRespo
 
 
 def count_active_admins(db_session: DbSession) -> int:
-    active_users = list(
-        db_session.scalars(select(User).where(User.is_active.is_(True)))
+    from sqlalchemy import cast, Text
+
+    return (
+        db_session.scalar(
+            select(func.count(User.id))
+            .where(User.is_active.is_(True))
+            .where(cast(User.roles, Text).contains("admin"))
+        )
+        or 0
     )
-    return sum(1 for user in active_users if "admin" in user.roles)
 
 
 def ensure_not_demoting_last_active_admin(

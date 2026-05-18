@@ -1,4 +1,5 @@
 """Tests for the SSE streaming chat endpoint (/api/v1/chat/generate)."""
+
 from __future__ import annotations
 
 import json

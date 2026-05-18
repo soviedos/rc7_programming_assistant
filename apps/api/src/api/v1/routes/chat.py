@@ -3,14 +3,13 @@ from collections.abc import Generator
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func as sa_func, select
 
 from src.api.v1.deps import DbSession, get_current_user
 from src.api.v1.schemas.chat import (
     ChatHistoryItemResponse,
     ChatHistoryListResponse,
     ChatRequest,
-    ChatResponse,
     ReferenceItem,
 )
 from src.core.config import settings
@@ -212,8 +211,6 @@ async def list_chat_history(
             .limit(limit)
         )
     )
-    from sqlalchemy import func as sa_func  # noqa: PLC0415
-
     count = (
         db.scalar(
             select(sa_func.count())

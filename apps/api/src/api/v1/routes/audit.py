@@ -3,10 +3,12 @@ from __future__ import annotations
 import math
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 
 from src.api.v1.deps import DbSession, get_current_admin_user
 from src.api.v1.schemas.audit import AuditLogEntry, AuditLogResponse
 from src.db.models import User
+from src.db.models.audit import AuditLog
 from src.services.audit_service import get_audit_logs
 
 router = APIRouter()
@@ -64,9 +66,6 @@ def get_audit_log(
     db: DbSession,
     _: User = Depends(get_current_admin_user),
 ) -> AuditLogEntry:
-    from sqlalchemy import select
-    from src.db.models.audit import AuditLog
-
     row = db.scalar(select(AuditLog).where(AuditLog.id == log_id))
     if not row:
         raise HTTPException(
