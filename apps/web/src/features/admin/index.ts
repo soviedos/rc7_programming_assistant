@@ -3,3 +3,4 @@ export { UsersPanel } from "./users-panel";
 export { AdminNav } from "./admin-nav";
 export { RolesPanel } from "./roles-panel";
 export { SettingsPanel } from "./settings-panel";
+export { AuditPanel } from "./audit-panel";

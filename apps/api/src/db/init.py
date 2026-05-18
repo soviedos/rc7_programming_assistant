@@ -2,7 +2,7 @@ from sqlalchemy import inspect, select, text
 
 from src.core.config import settings
 from src.db.base import Base
-from src.db.models import ChatHistory, RolePermission, SystemSetting, User
+from src.db.models import AuditLog, ChatHistory, RolePermission, SystemSetting, User
 from src.db.session import SessionLocal, engine
 from src.services.auth.passwords import hash_password
 
@@ -53,6 +53,7 @@ def initialize_database() -> None:
     ensure_chunk_embedding_column()
     ensure_chat_history_table()
     ensure_settings_table()
+    ensure_audit_log_table()
     seed_bootstrap_admin()
     seed_role_permissions()
     seed_default_settings()
@@ -196,6 +197,14 @@ def ensure_settings_table() -> None:
     if "system_settings" in set(inspector.get_table_names()):
         return
     SystemSetting.__table__.create(bind=engine)
+
+
+def ensure_audit_log_table() -> None:
+    """Create the audit_log table if it does not exist yet."""
+    inspector = inspect(engine)
+    if "audit_log" in set(inspector.get_table_names()):
+        return
+    AuditLog.__table__.create(bind=engine)
 
 
 def seed_default_settings() -> None:

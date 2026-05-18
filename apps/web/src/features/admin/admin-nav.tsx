@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpenText, Settings2, ShieldCheck, Users } from "lucide-react";
+import { BookOpenText, ClipboardList, Settings2, ShieldCheck, Users } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/admin/users", label: "Usuarios", icon: Users },
   { href: "/admin/roles", label: "Roles", icon: ShieldCheck },
   { href: "/admin/settings", label: "Configuración", icon: Settings2 },
+  { href: "/admin/audit", label: "Auditoría", icon: ClipboardList },
 ];
 
 export function AdminNav() {

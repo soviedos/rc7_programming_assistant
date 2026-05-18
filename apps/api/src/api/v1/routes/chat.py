@@ -10,6 +10,7 @@ from src.api.v1.schemas.chat import (
     ReferenceItem,
 )
 from src.db.models.chat_history import ChatHistory
+from src.services.audit_service import log_event
 from src.services.chat.service import generate_rag_response
 from src.services.settings.service import get_setting_value
 
@@ -96,6 +97,21 @@ def generate_code(
         .where(ChatHistory.id.not_in(keep_ids))
     )
     db.commit()
+
+    log_event(
+        db,
+        "CHAT_QUERY",
+        "Consulta de chat procesada",
+        actor_id=user.id,
+        actor_email=user.email,
+        resource_type="chat",
+        metadata={
+            "robot_type": payload.robot_type,
+            "entry_type": entry_type,
+            "references_count": len(result.references),
+        },
+        ip_address=request.client.host if request.client else None,
+    )
 
     return result
 

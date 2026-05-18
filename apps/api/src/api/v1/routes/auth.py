@@ -14,6 +14,7 @@ from src.api.v1.schemas.auth import (
     RoleSwitchRequest,
     SessionResponse,
 )
+from src.services.audit_service import log_event
 from src.services.auth.passwords import verify_password
 from src.services.auth.users import build_session_response, get_user_by_email
 
@@ -31,6 +32,7 @@ async def auth_providers() -> LoginOptionsResponse:
 @router.post("/login", response_model=SessionResponse)
 async def login(
     payload: LoginRequest,
+    request: Request,
     response: Response,
     db_session: DbSession,
 ) -> SessionResponse:
@@ -41,6 +43,13 @@ async def login(
         or not user.is_active
         or not verify_password(payload.password, user.password_hash)
     ):
+        log_event(
+            db_session,
+            "AUTH_FAILED",
+            f"Intento de login fallido para {payload.email}",
+            actor_email=payload.email,
+            ip_address=request.client.host if request.client else None,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Credenciales invalidas.",
@@ -51,6 +60,14 @@ async def login(
         "admin" if "admin" in user.roles else "user",
     )
     set_session_cookie(response, session_response, user.id)
+    log_event(
+        db_session,
+        "AUTH_LOGIN",
+        f"Inicio de sesion exitoso para {user.email}",
+        actor_id=user.id,
+        actor_email=user.email,
+        ip_address=request.client.host if request.client else None,
+    )
     return session_response
 
 
@@ -83,6 +100,20 @@ async def switch_role(
 
 
 @router.post("/logout", response_model=LogoutResponse)
-async def logout(response: Response) -> LogoutResponse:
+async def logout(
+    request: Request, response: Response, db_session: DbSession
+) -> LogoutResponse:
+    try:
+        user = get_current_user(request, db_session)
+        log_event(
+            db_session,
+            "AUTH_LOGOUT",
+            f"Cierre de sesion para {user.email}",
+            actor_id=user.id,
+            actor_email=user.email,
+            ip_address=request.client.host if request.client else None,
+        )
+    except Exception:
+        pass
     clear_session_cookie(response)
     return LogoutResponse(success=True)

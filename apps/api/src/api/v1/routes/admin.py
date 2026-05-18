@@ -17,6 +17,7 @@ from src.api.v1.schemas.admin import (
     UserRole,
 )
 from src.db.models import Manual, RolePermission, User
+from src.services.audit_service import log_event
 from src.services.auth.passwords import hash_password, validate_password_rules
 
 router = APIRouter()
@@ -239,7 +240,7 @@ async def get_user(
 async def create_user(
     payload: AdminUserCreateRequest,
     db_session: DbSession,
-    _: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin_user),
 ) -> AdminUserResponse:
     normalized_email = payload.email.strip().lower()
     existing_user = db_session.scalar(
@@ -269,6 +270,15 @@ async def create_user(
     db_session.add(user)
     db_session.commit()
     db_session.refresh(user)
+    log_event(
+        db_session,
+        "ADMIN_USER_CREATED",
+        f"Usuario creado: {user.email}",
+        actor_id=current_admin.id,
+        actor_email=current_admin.email,
+        resource_type="user",
+        resource_id=str(user.id),
+    )
     return serialize_user(user)
 
 
@@ -317,6 +327,15 @@ async def update_user(
     db_session.add(user)
     db_session.commit()
     db_session.refresh(user)
+    log_event(
+        db_session,
+        "ADMIN_USER_UPDATED",
+        f"Usuario actualizado: {user.email}",
+        actor_id=current_admin.id,
+        actor_email=current_admin.email,
+        resource_type="user",
+        resource_id=str(user.id),
+    )
     return serialize_user(user)
 
 
@@ -343,5 +362,16 @@ async def delete_user(
         db_session, user, new_is_active=False, new_role="user"
     )
 
+    deleted_email = user.email
+    deleted_id = str(user.id)
     db_session.delete(user)
     db_session.commit()
+    log_event(
+        db_session,
+        "ADMIN_USER_TOGGLED",
+        f"Usuario eliminado: {deleted_email}",
+        actor_id=current_admin.id,
+        actor_email=current_admin.email,
+        resource_type="user",
+        resource_id=deleted_id,
+    )

@@ -42,6 +42,7 @@ from src.services.manuals import (
     get_manual_storage_service,
     serialize_manual,
 )
+from src.services.audit_service import log_event
 
 router = APIRouter()
 
@@ -331,7 +332,15 @@ async def upload_manual(
     db_session.add(manual)
     db_session.commit()
     db_session.refresh(manual)
-
+    log_event(
+        db_session,
+        "MANUAL_UPLOADED",
+        f"Manual subido: {manual.title}",
+        actor_id=current_user.id,
+        actor_email=current_user.email,
+        resource_type="manual",
+        resource_id=str(manual.id),
+    )
     return serialize_manual(manual)
 
 
@@ -340,7 +349,7 @@ async def update_manual(
     manual_id: int,
     payload: ManualUpdateRequest,
     db_session: DbSession,
-    _: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_user),
 ) -> ManualResponse:
     manual = get_manual_or_404(db_session, manual_id)
 
@@ -358,6 +367,15 @@ async def update_manual(
     db_session.add(manual)
     db_session.commit()
     db_session.refresh(manual)
+    log_event(
+        db_session,
+        "MANUAL_UPDATED",
+        f"Manual actualizado: {manual.title}",
+        actor_id=current_user.id,
+        actor_email=current_user.email,
+        resource_type="manual",
+        resource_id=str(manual.id),
+    )
     return serialize_manual(manual)
 
 
@@ -430,7 +448,7 @@ async def cleanup_stale_processing(
 async def delete_manual(
     manual_id: int,
     db_session: DbSession,
-    _: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_user),
     storage_service: ManualStorageService = Depends(get_manual_storage_service),
 ) -> Response:
     manual = get_manual_or_404(db_session, manual_id)
@@ -443,7 +461,18 @@ async def delete_manual(
             detail=str(exc),
         ) from exc
 
+    deleted_title = manual.title
+    deleted_id = str(manual.id)
     reset_manual_ingestion_state(db_session, manual)
     db_session.delete(manual)
     db_session.commit()
+    log_event(
+        db_session,
+        "MANUAL_DELETED",
+        f"Manual eliminado: {deleted_title}",
+        actor_id=current_user.id,
+        actor_email=current_user.email,
+        resource_type="manual",
+        resource_id=deleted_id,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -10,6 +10,7 @@ from src.api.v1.schemas.settings import (
     SettingsResponse,
 )
 from src.db.models import User
+from src.services.audit_service import log_event
 from src.services.settings import service as settings_service
 
 router = APIRouter()
@@ -64,14 +65,30 @@ def update_setting(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Configuración '{key}' no encontrada.",
         )
+    log_event(
+        db,
+        "SETTING_UPDATED",
+        f"Configuración '{key}' actualizada a '{body.value}'",
+        actor_id=current_user.id,
+        actor_email=current_user.email,
+        resource_type="setting",
+        resource_id=key,
+    )
     return _serialize(row)
 
 
 @router.post("/reset", response_model=SettingsResponse)
 def reset_settings(
     db: DbSession,
-    _: User = Depends(get_current_admin_user),
+    current_user: User = Depends(get_current_admin_user),
 ) -> SettingsResponse:
     settings_service.reset_to_defaults(db)
+    log_event(
+        db,
+        "SETTING_RESET",
+        "Configuraciones restauradas a valores predeterminados",
+        actor_id=current_user.id,
+        actor_email=current_user.email,
+    )
     rows = settings_service.get_all_settings(db)
     return SettingsResponse(items=[_serialize(r) for r in rows])

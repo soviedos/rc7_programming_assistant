@@ -1,6 +1,15 @@
 from fastapi import APIRouter
 
-from src.api.v1.routes import admin, auth, chat, health, manuals, profile, settings
+from src.api.v1.routes import (
+    admin,
+    audit,
+    auth,
+    chat,
+    health,
+    manuals,
+    profile,
+    settings,
+)
 
 api_router = APIRouter()
 api_router.include_router(health.router, prefix="/health", tags=["health"])
@@ -10,3 +19,4 @@ api_router.include_router(manuals.router, prefix="/manuals", tags=["manuals"])
 api_router.include_router(chat.router, prefix="/chat", tags=["chat"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(settings.router, prefix="/admin/settings", tags=["settings"])
+api_router.include_router(audit.router, prefix="/admin/audit", tags=["audit"])
