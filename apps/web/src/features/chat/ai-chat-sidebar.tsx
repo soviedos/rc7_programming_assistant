@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Bot, PanelRightClose, BookOpen, Copy, Check, ChevronDown, ChevronUp } from "lucide-react";
+import { Bot, PanelRightClose, BookOpen, ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -20,40 +20,6 @@ export type Message = {
   timestamp: Date;
   isError?: boolean;
 };
-
-// ── Internal: code block ───────────────────────────────────────────
-
-function CodeBlock({ code }: { code: string }) {
-  const [copied, setCopied] = useState(false);
-
-  function handleCopy() {
-    navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  return (
-    <div className="mt-2 rounded border border-border overflow-hidden">
-      <div className="flex items-center justify-between px-2 py-1 bg-bg-soft border-b border-border">
-        <span className="text-[10px] text-muted font-mono">PAC</span>
-        <button
-          onClick={handleCopy}
-          className="flex items-center gap-1 text-[10px] text-muted hover:text-ink transition-colors"
-        >
-          {copied ? (
-            <Check className="h-3 w-3 text-success" />
-          ) : (
-            <Copy className="h-3 w-3" />
-          )}
-          {copied ? "Copiado" : "Copiar"}
-        </button>
-      </div>
-      <pre className="p-2 text-[11px] font-mono leading-relaxed text-ink overflow-x-auto bg-bg">
-        {code}
-      </pre>
-    </div>
-  );
-}
 
 // ── Component ──────────────────────────────────────────────────────
 

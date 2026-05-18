@@ -43,9 +43,36 @@ function CodeCanvas({ messages }: { messages: Message[] }) {
 
   function handleCopy() {
     if (!latestCode) return;
-    navigator.clipboard.writeText(latestCode);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+
+    const markDone = () => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    };
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(latestCode).then(markDone).catch(() => {
+        copyFallback(latestCode);
+        markDone();
+      });
+    } else {
+      copyFallback(latestCode);
+      markDone();
+    }
+  }
+
+  function copyFallback(text: string) {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+      document.execCommand("copy");
+    } finally {
+      document.body.removeChild(textarea);
+    }
   }
 
   if (!latestCode) {

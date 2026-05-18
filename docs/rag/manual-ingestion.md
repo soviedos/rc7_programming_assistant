@@ -62,11 +62,8 @@ Chunks y vectores se persisten en PostgreSQL + pgvector. El estado del manual se
 | `text` | Contenido textual del fragmento |
 | `page` | Número de página en el PDF original |
 | `chunk_index` | Posición del chunk dentro del manual |
-| `embedding` | Vector de 768 dimensiones (ARRAY REAL, nullable mientras se genera) |
+| `embedding` | Vector de 768 dimensiones (ARRAY REAL) |
 | `manual_id` | Referencia al manual de origen |
-
-| `source_file` | Referencia al archivo PDF original en MinIO |
-| `embedding` | Vector generado para búsqueda semántica |
 
 ---
 

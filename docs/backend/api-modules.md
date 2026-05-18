@@ -41,9 +41,11 @@ Implementa firma y lectura de cookies de sesión con JWT (HttpOnly, Secure en pr
 | `/api/v1/chat/history` | `GET` | Historial de conversaciones del usuario |
 | `/api/v1/chat/history/{id}` | `DELETE` | Eliminación de una entrada del historial |
 
-Implementa un pipeline RAG en dos fases:
+Implementa un pipeline RAG en cuatro fases:
 1. **Fase 1 (HyDE):** consulta directa a Gemini con prompt simplificado para generar una respuesta hipotética que sirve como base de recuperación.
-2. **Fase 2 (RAG):** embedding de `(consulta + respuesta_fase1)` → recuperación de chunks relevantes → respuesta final con contexto documental.
+2. **Fase 2 (retrieval):** embedding de `(consulta + respuesta_fase1)` → recuperación de los top-6 chunks más relevantes por similitud coseno con boost por categoría.
+3. **Fase 3 (contexto):** construcción del contexto documental a partir de los chunks recuperados (presupuesto de 12 000 caracteres).
+4. **Fase 4 (respuesta final):** llamada a Gemini con el contexto RAG y el prompt de sistema estructurado; genera JSON con `summary`, `pac_code` y `references`. Si no hay chunks disponibles, genera la respuesta usando solo las reglas de sintaxis PAC del prompt.
 
 Comportamiento adicional:
 - El historial por usuario se poda automáticamente a las 50 entradas más recientes.
@@ -86,6 +88,8 @@ Gestión de la base documental:
 | `/api/v1/manuals` | `GET` | Lista los manuales registrados |
 | `/api/v1/manuals/{id}` | `GET` | Devuelve el detalle de un manual |
 | `/api/v1/manuals` | `POST` | Carga un PDF a MinIO y persiste sus metadatos |
+| `/api/v1/manuals/{id}` | `PUT` | Actualiza los metadatos de un manual |
+| `/api/v1/manuals/{id}` | `DELETE` | Elimina el manual y su archivo en MinIO |
 
 Registro del manual, almacenamiento en MinIO y seguimiento del estado de ingestión (`pending` → `processing` → `ready` / `failed`).
 
@@ -104,9 +108,6 @@ Configuración administrativa del sistema:
 
 Registro de eventos del sistema:
 - Acciones administrativas
+- Cambios de configuración
 - Errores del pipeline de ingestión
 - Consultas del asistente
-
-- Acciones administrativas
-- Cambios de configuración
-- Eventos de ingestión documental

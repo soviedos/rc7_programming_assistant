@@ -14,8 +14,9 @@ Resumen del progreso de implementación del RC7 Programming Assistant.
 | **Manuales** | Registro administrativo de PDFs, carga a MinIO y metadatos persistidos |
 | **Ingestión documental** | El worker procesa manuales pendientes: extrae texto con pypdf, genera chunks semánticos, revisión y autocorrección con Gemini, genera embeddings con `gemini-embedding-001` e indexa en pgvector |
 | **CRUD administrativo** | Creación, edición y desactivación de usuarios y gestión de permisos por rol desde la consola |
-| **Retrieval RAG** | Búsqueda vectorial con pgvector integrada en el pipeline de chat |
-| **Integración Gemini** | Pipeline RAG con HyDE (dos fases): respuesta hipotética → embedding + retrieval → respuesta final con contexto documental |
+| **Retrieval RAG** | Búsqueda vectorial con pgvector; similitud coseno con boost por categoría; top-6 chunks con presupuesto de 12 000 caracteres |
+| **Integración Gemini** | Pipeline RAG de 4 fases con HyDE: respuesta hipotética → embedding + retrieval → contexto → respuesta final con JSON estructurado |
+| **Generación de código PAC** | Genera programa principal + archivos `dio_tab.h` y `var_tab.h` como un bloque único; las macros reflejan el perfil I/O del robot configurado |
 | **Frontend** | Login profesional con identidad RobLab/CENFOTEC, tema oscuro unificado, workspace del asistente, consola de manuales con extracción automática de metadatos, panel de configuración de perfil |
 | **Rutas protegidas** | Navegación condicionada por sesión y rol activo |
 | **Stack Docker** | 6 servicios orquestados con healthchecks y dependencias declarativas; uvicorn con `--timeout-keep-alive 120` para soportar peticiones largas de Gemini |
