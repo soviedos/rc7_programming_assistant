@@ -49,11 +49,6 @@ Base de datos transaccional y vectorial única. Tablas principales:
 Almacenamiento de objetos compatible con S3 para PDFs originales. El worker descarga
 desde MinIO al procesar; la API sube y sirve archivos.
 
-### Redis
-
-Incluido en el stack Docker; actualmente sin consumidores activos. Reservado para
-colas de tareas o caché en iteraciones futuras.
-
 ### Nginx
 
 Reverse proxy. Configuración especial para rutas SSE (`/api/v1/chat/`):

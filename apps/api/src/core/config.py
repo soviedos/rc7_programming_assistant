@@ -21,8 +21,6 @@ class Settings(BaseSettings):
     postgres_db: str = "rc7_assistant"
     postgres_user: str = "postgres"
     postgres_password: str = "postgres"
-    redis_host: str = "redis"
-    redis_port: int = 6379
     minio_endpoint: str = "http://minio:9000"
     minio_root_user: str = "minioadmin"
     minio_root_password: str = "minioadmin"

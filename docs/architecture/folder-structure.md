@@ -47,8 +47,7 @@ rc7_programming_assistant/
 │   ├── docker/                 # Dockerfiles
 │   ├── nginx/                  # Configuración de reverse proxy
 │   ├── minio/                  # Configuración de object storage
-│   ├── postgres/               # Scripts de inicialización de BD
-│   └── redis/                  # Configuración de cache y colas
+│   └── postgres/               # Scripts de inicialización de BD
 ├── storage/                    # Volúmenes locales de desarrollo
 ├── docker-compose.yml
 ├── .env.example

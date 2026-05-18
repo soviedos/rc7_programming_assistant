@@ -29,7 +29,7 @@ jobs:
       - name: Run tests
         run: npm test
 
-  # ─── Backend & worker tests (require PostgreSQL, Redis, MinIO) ───────────────
+  # ─── Backend & worker tests (require PostgreSQL, MinIO) ───────────────
   test-backend:
     name: Backend & worker tests
     runs-on: ubuntu-latest
@@ -40,12 +40,12 @@ jobs:
         run: cp .env.example .env
 
       - name: Start infrastructure services
-        run: docker compose up -d postgres redis minio
+        run: docker compose up -d postgres minio
 
       - name: Wait for infrastructure to be healthy
         run: |
           timeout 90 bash -c \
-            'until docker compose ps | grep -E "(postgres|redis|minio).*healthy" | wc -l | grep -q "^3$"; do
+            'until docker compose ps | grep -E "(postgres|minio).*healthy" | wc -l | grep -q "^2$"; do
                echo "Waiting for infra..."; sleep 3
              done'
 

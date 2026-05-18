@@ -116,7 +116,7 @@ bash scripts/import-data.sh migration_export_TIMESTAMP
 ```
 
 El script:
-1. Arranca PostgreSQL, Redis y MinIO
+1. Arranca PostgreSQL y MinIO
 2. Restaura el dump SQL en PostgreSQL
 3. Copia los archivos de MinIO al named volume `minio_data`
 

@@ -98,7 +98,7 @@ data: {"type": "error", "message": "Pipeline fallido"}
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| `GET` | `/api/v1/admin/status` | `admin` | Estado del sistema: BD, MinIO, Redis, conteos |
+| `GET` | `/api/v1/admin/status` | `admin` | Estado del sistema: conteos de manuales, usuarios y jobs pendientes |
 | `GET` | `/api/v1/admin/role-permissions` | `admin` | Lista los permisos de rol configurados |
 | `POST` | `/api/v1/admin/role-permissions` | `admin` | Crea un permiso de rol |
 | `PUT` | `/api/v1/admin/role-permissions/{id}` | `admin` | Actualiza un permiso de rol |

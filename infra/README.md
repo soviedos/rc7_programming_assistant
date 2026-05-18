@@ -12,7 +12,6 @@ Configuración de infraestructura y servicios de soporte para el entorno contene
 | [`nginx/`](./nginx/) | Configuración del reverse proxy |
 | [`minio/`](./minio/) | Configuración del object storage local (S3-compatible) |
 | [`postgres/`](./postgres/) | Scripts de inicialización y configuración de la base de datos |
-| [`redis/`](./redis/) | Configuración de cache y colas de tareas |
 
 ## Orquestación
 

@@ -12,7 +12,6 @@ Proceso asincrónico del RC7 Programming Assistant, dedicado al procesamiento de
 | SQLAlchemy + psycopg | Acceso a PostgreSQL |
 | MinIO SDK | Descarga de manuales PDF |
 | pypdf | Extracción inicial de texto |
-| Redis | Coordinación de tareas con el backend |
 | pydantic-settings | Configuración por variables de entorno |
 
 ---
@@ -44,7 +43,6 @@ El worker ya ejecuta una primera versión funcional del pipeline:
 - Clasificación técnica por robot/controlador
 - Embeddings por chunk
 - Indexación vectorial con pgvector
-- Disparo explícito de jobs desde backend/Redis en lugar de polling simple
 
 ---
 

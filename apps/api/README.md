@@ -14,7 +14,6 @@ Backend principal del RC7 Programming Assistant, responsable de la autenticació
 | PyJWT | Firma y verificación de tokens |
 | pwdlib (Argon2) | Hashing de contraseñas |
 | psycopg | Driver PostgreSQL |
-| Redis | Conexión con cache y colas |
 | MinIO | Almacenamiento de manuales PDF |
 
 ---

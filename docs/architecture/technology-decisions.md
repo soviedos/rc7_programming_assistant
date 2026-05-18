@@ -47,13 +47,6 @@ Resumen de tecnologías seleccionadas y decisiones de arquitectura (ADRs) del pr
 | **Compatibilidad S3** | Migración futura a AWS S3 / GCS sin cambios de código |
 | **Desarrollo local** | Contenedor ligero sin dependencia de proveedores cloud |
 
-### Cache y colas — Redis
-
-| Criterio | Detalle |
-|---|---|
-| **Versatilidad futura** | Soporta colas, cache y pub/sub en un solo servicio |
-| **Estado actual** | Presente en el stack pero sin consumidores activos; el worker usa polling SQL |
-
 ---
 
 ## Architecture Decision Records (ADR)

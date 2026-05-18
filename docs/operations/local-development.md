@@ -20,7 +20,6 @@ Guía para levantar y operar el sistema completo en un entorno de desarrollo loc
 | `api` | FastAPI (custom) | 8000 | Backend |
 | `worker` | Python (custom) | — | Pipeline documental |
 | `postgres` | PostgreSQL | 5432 | Base de datos |
-| `redis` | Redis | 6379 | Cache y colas |
 | `minio` | MinIO | 9000 / 9001 | Object storage |
 
 ---
@@ -102,7 +101,6 @@ docker compose up --build -d api
 | `SESSION_COOKIE_NAME` | Nombre de la cookie de sesión | No |
 | `SESSION_TTL_MINUTES` | Duración de la sesión en minutos | No |
 | `POSTGRES_*` | Configuración de conexión a PostgreSQL | No (valores por defecto) |
-| `REDIS_*` | Configuración de conexión a Redis | No (valores por defecto) |
 
 > Copie `.env.example` como `.env` y ajuste los valores antes de levantar el stack.
 

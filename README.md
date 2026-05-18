@@ -30,7 +30,6 @@ graph TD
 | **Worker** | `apps/worker/` | Ingestión PDF: parse → chunk → revisión Gemini → embed → pgvector |
 | **PostgreSQL + pgvector** | — | Datos transaccionales + almacenamiento vectorial |
 | **MinIO** | — | PDFs originales (API compatible con S3) |
-| **Redis** | — | Presente en el stack; reservado para colas futuras |
 | **Nginx** | `infra/nginx/` | Reverse proxy; buffering desactivado para rutas SSE |
 
 ---
@@ -89,7 +88,6 @@ curl -s http://localhost:8000/api/v1/health/ | python3 -m json.tool
 | Swagger UI | http://localhost:8000/docs | Documentación interactiva de la API |
 | MinIO Console | http://localhost:9001 | Administración de object storage |
 | PostgreSQL | localhost:5432 | Base de datos (acceso directo) |
-| Redis | localhost:6379 | Cache / colas (acceso directo) |
 
 ---
 
@@ -110,8 +108,6 @@ curl -s http://localhost:8000/api/v1/health/ | python3 -m json.tool
 | `POSTGRES_DB` | No | `rc7_assistant` | Nombre de la base de datos |
 | `POSTGRES_USER` | No | `postgres` | Usuario de PostgreSQL |
 | `POSTGRES_PASSWORD` | Sí* | `postgres` | Contraseña de PostgreSQL (*obligatoria en producción) |
-| `REDIS_HOST` | No | `redis` | Host de Redis |
-| `REDIS_PORT` | No | `6379` | Puerto de Redis |
 | `MINIO_ENDPOINT` | No | `http://minio:9000` | Endpoint de MinIO |
 | `MINIO_ROOT_USER` | No | `minioadmin` | Usuario root de MinIO |
 | `MINIO_ROOT_PASSWORD` | Sí* | `minioadmin` | Contraseña root de MinIO (*obligatoria en producción) |
@@ -191,7 +187,6 @@ rc7_programming_assistant/
 | Worker | Python + google-genai SDK | Python 3.12+ |
 | Base de datos | PostgreSQL + pgvector | 15+ |
 | Object storage | MinIO (S3-compatible) | — |
-| Cache / Colas | Redis | 7+ |
 | Contenedores | Docker + Docker Compose | 24.0+ / 2.20+ |
 | IA | Google Gemini 2.5 Flash + gemini-embedding-001 | — |
 | Testing | pytest, Vitest | — |
