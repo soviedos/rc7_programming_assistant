@@ -64,12 +64,13 @@ jobs:
     name: Deploy to production
     needs: [test-frontend, test-backend]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && secrets.SERVER_HOST != ''
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Deploy via SSH
+        if: secrets.SERVER_HOST != ''
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SERVER_HOST }}
