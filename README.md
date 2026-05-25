@@ -199,4 +199,8 @@ rc7_programming_assistant/
 
 ## Licencia
 
-Proyecto privado. Todos los derechos reservados.
+Este proyecto está licenciado bajo [Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)](./LICENSE).
+
+Puedes estudiar y compartir el código con atribución, pero **no está permitido su uso comercial** sin autorización expresa del autor.
+
+© 2026 Sergio Oviedo
