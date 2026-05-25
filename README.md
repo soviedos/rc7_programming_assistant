@@ -140,6 +140,8 @@ docker compose exec worker python -m pytest
 
 ```text
 rc7_programming_assistant/
+├── .github/
+│   └── workflows/    # CI/CD (deploy.yml)
 ├── apps/
 │   ├── api/          # Backend FastAPI (Python 3.12)
 │   ├── web/          # Frontend Next.js 15
@@ -156,7 +158,8 @@ rc7_programming_assistant/
 ├── storage/          # Volúmenes locales (desarrollo)
 ├── docker-compose.yml
 ├── docker-compose.prod.yml
-└── .env.example
+├── .env.example      # Template de variables para desarrollo
+└── .env.prod.example # Template de variables para producción
 ```
 
 ---
