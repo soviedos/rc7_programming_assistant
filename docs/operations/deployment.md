@@ -21,7 +21,7 @@ Guía para migrar el sistema a un servidor de producción (AWS Lightsail, VPS, o
 | Código fuente | Montado como volumen (`./apps/…:/app`) | Copiado y compilado dentro de la imagen |
 | Frontend | `npm run dev` (Turbopack) | `next build` + `node server.js` |
 | Backend | `uvicorn --reload` | `uvicorn` sin reload |
-| Puertos internos | Expuestos al host (5432, 6379, 9000) | Solo accesibles en red Docker interna |
+| Puertos internos | Expuestos al host (5432, 9000) | Solo accesibles en red Docker interna |
 | MinIO | Bind mount `./storage/data` | Named volume `minio_data` |
 | Reverse proxy | Ninguno | Nginx con HTTPS |
 

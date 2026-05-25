@@ -15,9 +15,11 @@ import {
   ExternalLink,
   RefreshCw,
   Copy,
+  StopCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
+  cancelManual,
   cleanupStaleProcessing,
   fetchManuals,
   fetchManualReviewSummaries,
@@ -708,6 +710,7 @@ export function ManualsPanel() {
   const [showDelete, setShowDelete] = useState(false);
   const [selectedManual, setSelectedManual] = useState<ManualDocument | null>(null);
   const [retryingManualIds, setRetryingManualIds] = useState<Set<number>>(new Set());
+  const [cancelingManualIds, setCancelingManualIds] = useState<Set<number>>(new Set());
   const [isCleaningStale, setIsCleaningStale] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [copiedManualId, setCopiedManualId] = useState<number | null>(null);
@@ -730,6 +733,27 @@ export function ManualsPanel() {
   async function handleSuccess(nextMessage: string) {
     setMessage({ kind: "success", text: nextMessage });
     await loadData();
+  }
+
+  async function handleCancelManual(manual: ManualDocument) {
+    setMessage(null);
+    setCancelingManualIds((prev) => new Set(prev).add(manual.id));
+
+    try {
+      await cancelManual(manual.id);
+      await handleSuccess(`Procesamiento de ${manual.title} cancelado.`);
+    } catch (err) {
+      setMessage({
+        kind: "error",
+        text: err instanceof Error ? err.message : "No fue posible cancelar el manual.",
+      });
+    } finally {
+      setCancelingManualIds((prev) => {
+        const next = new Set(prev);
+        next.delete(manual.id);
+        return next;
+      });
+    }
   }
 
   async function handleRetryManual(manual: ManualDocument) {
@@ -945,7 +969,9 @@ export function ManualsPanel() {
                 const progress = getManualProgress(manual);
                 const queuePosition = pendingQueue.get(manual.id);
                 const canRetry = manual.status === "failed";
+                const canCancel = manual.status === "pending" || manual.status === "processing";
                 const isRetrying = retryingManualIds.has(manual.id);
+                const isCanceling = cancelingManualIds.has(manual.id);
                 const elapsedProcessing =
                   manual.status === "processing"
                     ?
@@ -1120,6 +1146,20 @@ export function ManualsPanel() {
                     <Trash2 className="h-3.5 w-3.5" />
                     Eliminar
                   </button>
+                  {canCancel && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleCancelManual(manual);
+                      }}
+                      disabled={isCanceling}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs text-warning hover:bg-warning/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      aria-label={`Detener ${manual.title}`}
+                    >
+                      {isCanceling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <StopCircle className="h-3.5 w-3.5" />}
+                      Detener
+                    </button>
+                  )}
                   {canRetry && (
                     <button
                       type="button"

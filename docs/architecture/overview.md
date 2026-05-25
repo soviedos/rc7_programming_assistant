@@ -32,10 +32,10 @@ flexibilidad de microservicios, adecuado para el volumen actual de manuales DENS
 
 | Aspecto | Detalle |
 |---|---|
-| Tecnología | Python 3.12 + google-genai SDK + pypdf + SQLAlchemy |
-| Responsabilidades | Ingestión documental: parsing pypdf → chunking semántico → revisión Gemini → embeddings → pgvector |
+| Tecnología | Python 3.12 + google-genai SDK + pypdf + pytesseract + pdf2image + SQLAlchemy |
+| Responsabilidades | Ingestión documental: parsing pypdf (con fallback OCR para PDFs escaneados) → chunking semántico → revisión Gemini → embeddings → pgvector |
 | Coordinación | Polling a PostgreSQL (`status = 'pending'`) con `FOR UPDATE SKIP LOCKED` para reclamar manuales |
-| Resiliencia | Timeout por manual, recuperación automática de manuales atascados en `processing` al reiniciar |
+| Resiliencia | Timeout por manual, recuperación automática de manuales atascados en `processing` al reiniciar; límite de 3 crashes consecutivos antes de marcar como `failed` |
 
 ### PostgreSQL 15 + pgvector
 
@@ -106,6 +106,9 @@ Worker polling (intervalo configurable)
     │
     ▼
 pypdf → extract_pdf_text_by_page()
+    ├─ Si ≥20 % de páginas tienen texto: extrae directamente
+    └─ Si <20 % de páginas tienen texto (PDF escaneado):
+       OCR página a página con pytesseract + pdf2image (DPI 150, spa+eng)
     │
     ▼
 build_text_chunks() → chunking semántico respetando párrafos
@@ -127,6 +130,10 @@ INSERT manual_chunks con embedding REAL[]
     ▼
 Listo para retrieval en próximas consultas de chat
 ```
+
+> **Cancelación:** `POST /api/v1/manuals/{id}/cancel` detiene un manual en `pending` o
+> `processing`, elimina sus chunks parciales y lo marca como `failed`.
+> Disponible desde el botón "Detener" en la consola admin.
 
 ---
 

@@ -49,8 +49,8 @@ echo ""
 mkdir -p infra/nginx/ssl
 
 # ─── Start only infrastructure services ──────────────────────────────────────
-echo "▶ Starting infrastructure (postgres, redis, minio)..."
-docker compose -f docker-compose.prod.yml up -d postgres redis minio
+echo "▶ Starting infrastructure (postgres, minio)..."
+docker compose -f docker-compose.prod.yml up -d postgres minio
 
 echo "  Waiting for postgres to be ready..."
 until docker compose -f docker-compose.prod.yml exec -T postgres \

@@ -5,10 +5,6 @@
 #   - PostgreSQL full dump (schema + data, including pgvector embeddings)
 #   - MinIO files (PDFs and manuals stored in ./storage/data)
 #
-# Redis is intentionally skipped: it holds only session data (JWT tokens,
-# cache) that expires naturally. Users will need to log in again on the
-# new server, which is acceptable.
-#
 # Usage (from project root):
 #   bash scripts/export-data.sh
 #

@@ -87,6 +87,7 @@ data: {"type": "error", "message": "Pipeline fallido"}
 | `POST` | `/api/v1/manuals/` | `admin` | Sube un PDF; crea registro y dispara ingestión en el worker |
 | `PUT` | `/api/v1/manuals/{manual_id}` | `admin` | Actualiza metadatos (título, categoría, descripción) |
 | `POST` | `/api/v1/manuals/{manual_id}/retry` | `admin` | Reintenta la ingestión de un manual fallido |
+| `POST` | `/api/v1/manuals/{manual_id}/cancel` | `admin` | Cancela un manual en estado `pending` o `processing`; elimina sus chunks y marca como `failed` |
 | `POST` | `/api/v1/manuals/cleanup-stale-processing` | `admin` | Libera manuales atascados en estado `processing` |
 | `DELETE` | `/api/v1/manuals/{manual_id}` | `admin` | Elimina manual, chunks, embeddings y archivo en MinIO |
 

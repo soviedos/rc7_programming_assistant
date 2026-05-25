@@ -351,12 +351,25 @@ def recover_stuck_processing_manuals(
         if not stuck_manuals:
             return 0
 
+        MAX_CRASH_RETRIES = 3
+
         for manual in stuck_manuals:
-            manual.status = "pending"
-            manual.chunk_count = 0
-            manual.processing_started_at = None
-            manual.indexed_at = None
-            manual.last_error = "Reencolado automaticamente tras reinicio del worker."
+            crash_marker = "[crash]"
+            error_text = manual.last_error or ""
+            crash_count = error_text.count(crash_marker)
+
+            if crash_count >= MAX_CRASH_RETRIES:
+                manual.status = "failed"
+                manual.chunk_count = 0
+                manual.processing_started_at = None
+                manual.indexed_at = None
+                manual.last_error = f"{error_text} Marcado como fallido tras {crash_count} crashes.".strip()
+            else:
+                manual.status = "pending"
+                manual.chunk_count = 0
+                manual.processing_started_at = None
+                manual.indexed_at = None
+                manual.last_error = f"{error_text} {crash_marker}".strip()
             session.add(manual)
 
         session.commit()

@@ -22,7 +22,11 @@ Admin → POST /api/v1/manuals/
     [Etapa 1] Extracción de texto
     pypdf → extract_pdf_text_by_page()
     ├─ Descarga PDF desde MinIO
-    └─ Texto extraído por página, preservando números de página
+    ├─ Texto extraído por página con pypdf, preservando números de página
+    └─ Si menos del 20 % de las páginas tienen texto (PDF escaneado):
+       fallback OCR con pytesseract + pdf2image
+       ├─ Procesado página a página (DPI 150) para limitar uso de memoria
+       └─ Idiomas: spa + eng
              │
              ▼
     [Etapa 2] Chunking semántico
@@ -58,6 +62,10 @@ Admin → POST /api/v1/manuals/
 **En caso de error:** `status=failed`, se guarda el mensaje de error en la tabla del manual.
 La ingestión puede reintentarse desde la consola de administración con `POST /api/v1/manuals/{id}/retry`.
 
+**Cancelación:** Un manual en `pending` o `processing` puede cancelarse con
+`POST /api/v1/manuals/{id}/cancel`. Elimina los chunks parciales y marca el manual como `failed`
+con el mensaje "Cancelado por el usuario.". Disponible desde el botón "Detener" en la consola admin.
+
 ---
 
 ## Estados del manual
@@ -67,10 +75,14 @@ La ingestión puede reintentarse desde la consola de administración con `POST /
 | `pending` | Subido pero aún no procesado por el worker |
 | `processing` | Worker actualmente procesando el manual |
 | `indexed` | Ingestión completada; chunks disponibles para RAG |
-| `failed` | Ingestión fallida; el campo `error_message` contiene el detalle |
+| `failed` | Ingestión fallida o cancelada; el campo `error_message` contiene el detalle |
 
-Un manual atascado en `processing` (worker reiniciado en medio de la ingestión) puede liberarse
-con `POST /api/v1/manuals/cleanup-stale-processing` (admin).
+**Resiliencia ante crashes:** Si el worker muere mientras procesa un manual (p.ej. por OOM),
+el registro queda en `processing`. Al reiniciar, el worker re-encola automáticamente los manuales
+atascados, marcando un contador de crashes en `last_error`. Tras 3 crashes consecutivos el manual
+se marca como `failed` para evitar bucles infinitos.
+Un manual atascado manualmente puede liberarse con
+`POST /api/v1/manuals/cleanup-stale-processing` (admin).
 
 ---
 

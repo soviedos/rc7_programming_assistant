@@ -11,7 +11,7 @@
 ```mermaid
 graph TD
     Browser["Browser / Cliente"] -->|HTTPS| Nginx["Nginx :80/:443"]
-    Nginx -->|proxy| Web["Next.js 14 :3000"]
+    Nginx -->|proxy| Web["Next.js 15 :3000"]
     Nginx -->|proxy /api/v1/*| API["FastAPI :8000"]
     Web -->|fetch /api/v1/*| API
     API -->|ORM SQLAlchemy| PG["PostgreSQL 15 + pgvector :5432"]
@@ -42,7 +42,7 @@ graph TD
 | `auth` | `/api/v1/auth` | Login, sesión JWT HttpOnly, logout, switch-role |
 | `profile` | `/api/v1/profile` | Perfil y contraseña del usuario autenticado |
 | `chat` | `/api/v1/chat` | Pipeline RAG con SSE streaming, historial |
-| `manuals` | `/api/v1/manuals` | CRUD de manuales + MinIO + trigger de ingestión |
+| `manuals` | `/api/v1/manuals` | CRUD de manuales + MinIO + trigger de ingestión + cancelación |
 | `admin` | `/api/v1/admin` | Estado del sistema, usuarios, permisos de rol |
 | `settings` | `/api/v1/admin/settings` | Parámetros configurables de Gemini/RAG en DB |
 | `audit` | `/api/v1/admin/audit` | Registro inmutable de eventos del sistema |
@@ -142,7 +142,7 @@ docker compose exec worker python -m pytest
 rc7_programming_assistant/
 ├── apps/
 │   ├── api/          # Backend FastAPI (Python 3.12)
-│   ├── web/          # Frontend Next.js 14
+│   ├── web/          # Frontend Next.js 15
 │   └── worker/       # Worker de ingestión documental
 ├── docs/             # Documentación técnica
 │   ├── architecture/ # Visión general, decisiones tecnológicas
@@ -182,9 +182,9 @@ rc7_programming_assistant/
 
 | Capa | Tecnología | Versión mínima |
 |---|---|---|
-| Frontend | Next.js + React + TypeScript | 14 |
+| Frontend | Next.js + React + TypeScript | 15 |
 | Backend | FastAPI + SQLAlchemy + Pydantic v2 | Python 3.12+ |
-| Worker | Python + google-genai SDK | Python 3.12+ |
+| Worker | Python + google-genai SDK + pytesseract + pdf2image | Python 3.12+ |
 | Base de datos | PostgreSQL + pgvector | 15+ |
 | Object storage | MinIO (S3-compatible) | — |
 | Contenedores | Docker + Docker Compose | 24.0+ / 2.20+ |

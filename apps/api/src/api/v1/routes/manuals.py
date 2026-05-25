@@ -405,6 +405,39 @@ async def retry_manual(
     return serialize_manual(manual)
 
 
+@router.post("/{manual_id}/cancel", response_model=ManualResponse)
+async def cancel_manual(
+    manual_id: int,
+    db_session: DbSession,
+    _: User = Depends(get_current_admin_user),
+) -> ManualResponse:
+    manual = get_manual_or_404(db_session, manual_id)
+
+    if manual.status not in ("pending", "processing"):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Solo se pueden cancelar manuales en estado pending o processing.",
+        )
+
+    db_session.execute(delete(ManualChunk).where(ManualChunk.manual_id == manual.id))
+    db_session.execute(
+        delete(ManualChunkReview).where(ManualChunkReview.manual_id == manual.id)
+    )
+    db_session.execute(
+        delete(ManualReviewSummary).where(ManualReviewSummary.manual_id == manual.id)
+    )
+
+    manual.status = "failed"
+    manual.chunk_count = 0
+    manual.last_error = "Cancelado por el usuario."
+    manual.processing_started_at = None
+    manual.indexed_at = None
+    db_session.add(manual)
+    db_session.commit()
+    db_session.refresh(manual)
+    return serialize_manual(manual)
+
+
 @router.post("/cleanup-stale-processing", response_model=StaleProcessingResult)
 async def cleanup_stale_processing(
     db_session: DbSession,

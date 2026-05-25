@@ -305,6 +305,15 @@ export async function retryManual(manualId: number): Promise<ManualDocument> {
   return normalizeManual(raw);
 }
 
+export async function cancelManual(manualId: number): Promise<ManualDocument> {
+  const raw = await api.post<ManualApiResponse>(
+    `/api/v1/manuals/${manualId}/cancel`,
+    undefined,
+    "No fue posible cancelar el manual.",
+  );
+  return normalizeManual(raw);
+}
+
 export async function cleanupStaleProcessing(
   olderThanMinutes: number = 10,
 ): Promise<StaleProcessingCleanupResult> {
