@@ -154,6 +154,7 @@ rc7_programming_assistant/
 │   ├── rag/          # Pipeline de ingestión documental
 │   └── decisions/    # Architecture Decision Records (ADR)
 ├── infra/            # Dockerfiles y configuración de servicios
+├── logs/             # Logs de api y worker (excluidos del control de versiones)
 ├── scripts/          # Scripts de backup y migración de datos
 ├── storage/          # Volúmenes locales (desarrollo)
 ├── docker-compose.yml
