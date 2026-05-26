@@ -263,4 +263,4 @@ Este proyecto está licenciado bajo [Creative Commons Attribution-NonCommercial 
 
 Puedes estudiar y compartir el código con atribución, pero **no está permitido su uso comercial** sin autorización expresa del autor.
 
-© 2026 Sergio Oviedo
+© 2026 Sergio Oviedo Seas

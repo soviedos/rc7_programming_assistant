@@ -66,22 +66,24 @@ export default function ChatPage() {
           if (evt.pac_code) {
             setMode("code");
           }
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === assistantId
-                ? {
-                    ...m,
-                    isStreaming: false,
-                    content: evt.summary,
-                    code: evt.pac_code || undefined,
-                    references: evt.references.map((r) => ({
-                      manual: r.title,
-                      section: r.page,
-                    })),
-                  }
-                : m,
-            ),
-          );
+          setMessages((prev) => {
+            const hasPlaceholder = prev.some((m) => m.id === assistantId);
+            const updatedMsg: Message = {
+              id: assistantId,
+              role: "assistant",
+              isStreaming: false,
+              content: evt.summary,
+              code: evt.pac_code || undefined,
+              references: evt.references.map((r) => ({
+                manual: r.title,
+                section: r.page,
+              })),
+              timestamp: new Date(),
+            };
+            return hasPlaceholder
+              ? prev.map((m) => (m.id === assistantId ? updatedMsg : m))
+              : [...prev, updatedMsg];
+          });
           loadHistory();
         },
         onError: (evt) => {
