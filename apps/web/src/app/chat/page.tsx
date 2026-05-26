@@ -70,7 +70,7 @@ export default function ChatPage() {
                     ...m,
                     isStreaming: false,
                     content: evt.summary,
-                    code: evt.pac_code || undefined,
+                    code: evt.pac_code ?? undefined,
                     references: evt.references.map((r) => ({
                       manual: r.title,
                       section: r.page,
@@ -134,7 +134,7 @@ export default function ChatPage() {
       id: `h-assistant-${item.id}`,
       role: "assistant",
       content: item.summary,
-      code: item.pac_code || undefined,
+      code: item.pac_code ?? undefined,
       references: item.references.map((r) => ({
         manual: r.title,
         section: r.page,
