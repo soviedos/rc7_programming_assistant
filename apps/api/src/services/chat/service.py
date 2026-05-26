@@ -185,9 +185,14 @@ def _parse_gemini_json(raw: str) -> dict:
         # Best-effort: extract first {...} block
         match = re.search(r"\{.*\}", cleaned, re.DOTALL)
         if match:
-            data = json.loads(match.group(0))
+            try:
+                data = json.loads(match.group(0))
+            except json.JSONDecodeError:
+                data = {"summary": cleaned, "pac_code": "", "references": []}
         else:
-            raise
+            # No JSON found at all — treat entire response as summary so the
+            # safety net below can still extract pac_code from a code block.
+            data = {"summary": cleaned, "pac_code": "", "references": []}
 
     # Safety net: if pac_code is empty but summary contains a PAC code block,
     # extract the code and strip it from the summary so the UI receives them

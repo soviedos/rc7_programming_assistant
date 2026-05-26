@@ -63,6 +63,9 @@ export default function ChatPage() {
           // Chunks are discarded; the final summary is shown on done
         },
         onDone: (evt) => {
+          if (evt.pac_code) {
+            setMode("code");
+          }
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId
@@ -70,7 +73,7 @@ export default function ChatPage() {
                     ...m,
                     isStreaming: false,
                     content: evt.summary,
-                    code: evt.pac_code ?? undefined,
+                    code: evt.pac_code || undefined,
                     references: evt.references.map((r) => ({
                       manual: r.title,
                       section: r.page,
