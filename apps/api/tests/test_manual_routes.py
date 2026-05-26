@@ -12,7 +12,7 @@ from src.db.models import (
     ManualReviewSummary,
     User,
 )
-from src.services.auth.passwords import hash_password
+from tests.helpers import create_user, login
 
 
 class FakeManualStorageService:
@@ -39,38 +39,6 @@ class FakeManualStorageService:
     def delete_manual(self, storage_key: str) -> None:
         self.removed_keys.append(storage_key)
         self.objects.pop(storage_key, None)
-
-
-def create_user(
-    db_session: Session,
-    *,
-    email: str,
-    password: str,
-    roles: list[str],
-) -> User:
-    user = User(
-        email=email.strip().lower(),
-        display_name="Usuario Manuales",
-        password_hash=hash_password(password),
-        roles=roles,
-        profile_settings={},
-        is_active=True,
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
-
-
-def login(client: TestClient, email: str, password: str) -> None:
-    response = client.post(
-        "/api/v1/auth/login",
-        json={
-            "email": email,
-            "password": password,
-        },
-    )
-    assert response.status_code == 200
 
 
 def test_manual_upload_requires_admin_role(

@@ -1,29 +1,7 @@
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from src.db.models import User
-from src.services.auth.passwords import hash_password
-
-
-def create_user(
-    db_session: Session,
-    *,
-    email: str,
-    password: str,
-    roles: list[str],
-    is_active: bool = True,
-) -> User:
-    user = User(
-        email=email.strip().lower(),
-        display_name="Usuario de prueba",
-        password_hash=hash_password(password),
-        roles=roles,
-        is_active=is_active,
-    )
-    db_session.add(user)
-    db_session.commit()
-    db_session.refresh(user)
-    return user
+from tests.helpers import create_user, login
 
 
 def test_login_me_switch_role_and_logout(
