@@ -27,6 +27,8 @@ from src.services.semantic_review import (
 from src.services.storage import ManualStorageService, get_manual_storage_service
 from src.utils.logging import log
 
+_MAX_CRASH_RETRIES = 3
+
 
 class ManualProcessingTimeoutError(TimeoutError):
     pass
@@ -351,14 +353,12 @@ def recover_stuck_processing_manuals(
         if not stuck_manuals:
             return 0
 
-        MAX_CRASH_RETRIES = 3
-
         for manual in stuck_manuals:
             crash_marker = "[crash]"
             error_text = manual.last_error or ""
             crash_count = error_text.count(crash_marker)
 
-            if crash_count >= MAX_CRASH_RETRIES:
+            if crash_count >= _MAX_CRASH_RETRIES:
                 manual.status = "failed"
                 manual.chunk_count = 0
                 manual.processing_started_at = None
