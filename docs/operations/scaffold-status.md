@@ -12,7 +12,7 @@ Resumen del progreso de implementación del RC7 Programming Assistant.
 | **Gestión de roles** | Cambio de rol activo entre `admin` y `user` |
 | **Bootstrap admin** | Creación automática del administrador inicial por variables de entorno |
 | **Manuales** | Registro administrativo de PDFs, carga a MinIO y metadatos persistidos |
-| **Ingestión documental** | El worker procesa manuales pendientes: extrae texto con pypdf (con fallback a OCR via pytesseract + pdf2image para PDFs escaneados), genera chunks semánticos, revisión y autocorrección con Gemini, genera embeddings con `gemini-embedding-001` e indexa en pgvector. OCR procesado página a página (DPI 150) para evitar picos de memoria. Límite de 3 reinicios automáticos tras crash del worker. |
+| **Ingestión documental** | El worker procesa manuales pendientes: extrae texto con pypdf, genera chunks semánticos, revisión y autocorrección con Gemini, genera embeddings con `gemini-embedding-001` e indexa en pgvector. Límite de 3 reinicios automáticos tras crash del worker (`_MAX_CRASH_RETRIES = 3`). |
 | **Cancelación de manuales** | `POST /api/v1/manuals/{id}/cancel` permite al administrador detener un manual en estado `pending` o `processing`. Elimina los chunks parciales y marca el manual como `failed`. Disponible desde el panel de administración con el botón "Detener". |
 | **CRUD administrativo** | Creación, edición y desactivación de usuarios y gestión de permisos por rol desde la consola |
 | **Retrieval RAG** | Búsqueda vectorial con pgvector; similitud coseno con boost por categoría; top-6 chunks con presupuesto de 12 000 caracteres |

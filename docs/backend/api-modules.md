@@ -43,7 +43,7 @@ La autenticación se realiza mediante cookie HttpOnly (`rc7_session`) con JWT fi
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| `POST` | `/api/v1/chat/generate` | `*` | **[SSE]** Ejecuta el pipeline RAG de 4 fases y transmite la respuesta como Server-Sent Events |
+| `POST` | `/api/v1/chat/generate` | `*` | **[SSE]** Ejecuta el pipeline RAG de 4 fases (HyDE → embed → retrieve → stream) y transmite la respuesta como Server-Sent Events. Las fases 1-3 son compartidas entre el modo síncrono y el streaming mediante `_run_rag_phases()`. |
 | `GET` | `/api/v1/chat/history` | `*` | Lista el historial de chat del usuario (paginado) |
 | `DELETE` | `/api/v1/chat/history/{id}` | `*` | Elimina una entrada específica del historial |
 

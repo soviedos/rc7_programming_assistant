@@ -22,11 +22,7 @@ Admin → POST /api/v1/manuals/
     [Etapa 1] Extracción de texto
     pypdf → extract_pdf_text_by_page()
     ├─ Descarga PDF desde MinIO
-    ├─ Texto extraído por página con pypdf, preservando números de página
-    └─ Si menos del 20 % de las páginas tienen texto (PDF escaneado):
-       fallback OCR con pytesseract + pdf2image
-       ├─ Procesado página a página (DPI 150) para limitar uso de memoria
-       └─ Idiomas: spa + eng
+    └─ Texto extraído por página con pypdf, preservando números de página
              │
              ▼
     [Etapa 2] Chunking semántico

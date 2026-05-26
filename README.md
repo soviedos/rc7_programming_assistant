@@ -8,19 +8,79 @@
 
 ## Arquitectura
 
+### Topología de servicios
+
 ```mermaid
-graph TD
-    Browser["Browser / Cliente"] -->|HTTPS| Nginx["Nginx :80/:443"]
-    Nginx -->|proxy| Web["Next.js 15 :3000"]
-    Nginx -->|proxy /api/v1/*| API["FastAPI :8000"]
-    Web -->|fetch /api/v1/*| API
-    API -->|ORM SQLAlchemy| PG["PostgreSQL 15 + pgvector :5432"]
-    API -->|S3 API| MinIO["MinIO :9000"]
-    API -->|google-genai SDK| Gemini["Google Gemini API"]
-    Worker["Worker Python"] -->|polling SQL| PG
-    Worker -->|download PDF| MinIO
-    Worker -->|embed_content| Gemini
-    PG -.->|pgvector similarity| API
+flowchart TB
+    Browser(["🌐 Browser"])
+
+    subgraph DockerStack["🐳 Docker Compose Stack"]
+        Nginx["Nginx\n:80 / :443\nSSE: proxy_buffering off\nread_timeout 310s"]
+
+        subgraph FE["apps/web — Next.js 15  ·  :3000"]
+            NextJS["App Router · TypeScript · Tailwind\nSSE Consumer · Rutas protegidas por rol\nWorkspace PAC · Consola admin"]
+        end
+
+        subgraph BE["apps/api — FastAPI  ·  :8000"]
+            FastAPI["auth · profile · chat · manuals\nadmin · settings · audit\nJWT HttpOnly · SQLAlchemy · Pydantic v2"]
+        end
+
+        subgraph WK["apps/worker — Python 3.12"]
+            Worker["Polling PostgreSQL cada ~5 s\nFOR UPDATE SKIP LOCKED\nMáx. 3 crash retries automáticos"]
+        end
+
+        subgraph DB["Persistencia"]
+            PG[("PostgreSQL 17 + pgvector\n:5432\nusers · manuals · manual_chunks\nchat_history · audit_log · settings")]
+            MinIO[("MinIO\n:9000  /  :9001 console\nObject Storage S3-compatible\nPDFs originales")]
+        end
+    end
+
+    Gemini(["☁️ Google Gemini API\ngemini-2.5-flash\ngemini-embedding-001"])
+
+    Browser -->|HTTPS| Nginx
+    Nginx -->|proxy :3000| NextJS
+    Nginx -->|"proxy /api/v1/*  →  :8000"| FastAPI
+    NextJS -->|"fetch /api/v1/*"| Nginx
+    FastAPI -->|"SQLAlchemy ORM"| PG
+    FastAPI -->|"upload / presigned URL"| MinIO
+    FastAPI -->|"HyDE · SSE streaming"| Gemini
+    Worker -->|"SELECT FOR UPDATE SKIP LOCKED"| PG
+    Worker -->|"download PDF"| MinIO
+    Worker -->|"semantic review · embed_content"| Gemini
+    Worker -->|"INSERT manual_chunks\n768-dim embedding vectors"| PG
+```
+
+### Pipelines — Ingestión y RAG
+
+```mermaid
+flowchart LR
+    subgraph Ingest["⚙️  Pipeline de Ingestión  —  Worker"]
+        direction TB
+        I1(["Admin\nPOST /api/v1/manuals/"])
+        I2["MinIO upload PDF\nPostgreSQL  status = pending"]
+        I3["Worker\nFOR UPDATE SKIP LOCKED\nstatus = processing"]
+        I4["pypdf\nextract_pdf_text_by_page()"]
+        I5["build_text_chunks()\nchunking semántico"]
+        I6["GeminiSemanticReviewer\nrevisión + autocorrección\ncoherence · completeness · boundary"]
+        I7["gemini-embedding-001\nbatch · 768 dimensiones"]
+        I8[("manual_chunks\nstatus = indexed")]
+
+        I1 --> I2 --> I3 --> I4 --> I5 --> I6 --> I7 --> I8
+    end
+
+    subgraph RAG["💬  Pipeline RAG  —  POST /api/v1/chat/generate"]
+        direction TB
+        R1(["Usuario\nprompt + código PAC actual"])
+        R2["Fase 1 — HyDE\nGemini · respuesta hipotética\n(sin contexto documental)"]
+        R3["Fase 2 — Retrieval\nembed(prompt + HyDE)\nbúsqueda coseno pgvector  ·  top-k"]
+        R4["Fase 3 — Contexto\nconstrucción con presupuesto de chars\nreference_map por chunk"]
+        R5["Fase 4 — Respuesta final\nGemini + contexto RAG\nJSON: summary · pac_code · references"]
+        R6(["SSE Streaming\nevents: chunk → done\nkeepalive cada 15 s"])
+
+        R1 --> R2 --> R3 --> R4 --> R5 --> R6
+    end
+
+    I8 --->|"similitud coseno\npgvector"| R3
 ```
 
 | Componente | Directorio | Responsabilidad |
@@ -189,7 +249,7 @@ rc7_programming_assistant/
 | Frontend | Next.js + React + TypeScript | 15 |
 | Backend | FastAPI + SQLAlchemy + Pydantic v2 | Python 3.12+ |
 | Worker | Python + google-genai SDK + pytesseract + pdf2image | Python 3.12+ |
-| Base de datos | PostgreSQL + pgvector | 15+ |
+| Base de datos | PostgreSQL + pgvector | 17+ |
 | Object storage | MinIO (S3-compatible) | — |
 | Contenedores | Docker + Docker Compose | 24.0+ / 2.20+ |
 | IA | Google Gemini 2.5 Flash + gemini-embedding-001 | — |

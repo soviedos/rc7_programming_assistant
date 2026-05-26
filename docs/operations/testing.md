@@ -20,10 +20,17 @@ Todas las suites se ejecutan dentro de Docker usando `docker compose exec ...`.
 |---|---|
 | Autenticación | Login, sesión actual, cambio de rol, logout |
 | Rutas base | Root (`/`), healthcheck |
-| Contratos placeholder | Chat generate, admin status |
+| Chat streaming | Pipeline RAG completo con SSE, errores y autenticación |
 | Utilidades | Hashing de passwords, validación de roles, generación de tokens |
+| Admin usuarios | CRUD, permisos por rol, validación de restricciones |
+| Manuales | Carga, listado, eliminación, retry, cancelación |
+| Auditoría | Creación de registros, filtros, paginación |
+| Profile | Lectura/escritura de perfil, cambio de contraseña |
+| Settings | CRUD completo de parámetros del sistema |
 
 **Entorno de pruebas**: SQLite en memoria con overrides de dependencias de FastAPI.
+
+**Helpers compartidos**: `apps/api/tests/helpers.py` contiene `create_user()` y `login()` usados por todos los módulos de prueba para evitar duplicación.
 
 ```bash
 docker compose exec api python -m pytest
