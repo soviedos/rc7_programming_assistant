@@ -272,39 +272,43 @@ def _call_gemini_stream(
             yield chunk.text
 
 
-# ── Public entry point ─────────────────────────────────────────────
+# ── Shared prompt constants ────────────────────────────────────────
+
+_PHASE1_SYSTEM = (
+    "Eres un experto programador de robots industriales Denso RC7. "
+    "Responde en español de forma técnica y detallada. "
+    "Puedes incluir fragmentos de código PAC si son relevantes."
+)
+
+_NO_RAG_NOTE = (
+    "AVISO: Los manuales del sistema aún no tienen embeddings generados, "
+    "por lo que esta respuesta se basa en las reglas de sintaxis PAC incluidas "
+    "en el prompt del sistema. Genera el código solicitado de la mejor forma "
+    "posible usando esas reglas, e indica en el summary que no se usó contexto "
+    "de manuales en esta respuesta."
+)
 
 
-def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
-    """Two-phase pipeline: Gemini first → RAG retrieval (HyDE) → structured response.
+# ── Shared RAG phases 1-3 ─────────────────────────────────────────
 
-    Phase 1: The user query goes directly to Gemini (no RAG context) so the
-             model answers from its own knowledge immediately.
-    Phase 2: Query + Gemini's initial answer are embedded together and used to
-             retrieve the most relevant manual chunks (Hypothetical Document
-             Embeddings — HyDE).  This finds better matches than embedding the
-             bare question.
-    Phase 3: If chunks were found, a second Gemini call is made with the RAG
-             context to produce the final structured JSON response.  If the DB
-             has no embeddings yet, Phase 1's answer is parsed directly.
+
+def _run_rag_phases(
+    db: Session,
+    payload: ChatRequest,
+    *,
+    top_k: int,
+    max_ctx: int,
+    temperature: float,
+    max_tokens: int,
+) -> tuple[list[str], dict[int, tuple[Manual, int]], str, str]:
+    """Run phases 1-3 of the RAG pipeline.
+
+    Returns a 4-tuple: (context_chunks, reference_map, system_prompt, phase4_message).
+    ``phase4_message`` is already built for Phase 4 (RAG context or fallback).
     """
-    # ── Read runtime settings from DB ────────────────────────────
-    top_k = int(get_setting_value(db, "rag_top_k_chunks", str(_TOP_K)))
-    max_ctx = int(
-        get_setting_value(db, "rag_context_budget_chars", str(_MAX_CTX_CHARS))
-    )
-    temperature = float(get_setting_value(db, "gemini_temperature", str(_TEMPERATURE)))
-    max_tokens = int(get_setting_value(db, "gemini_max_tokens", str(_MAX_TOKENS)))
-
-    # ── Phase 1: Direct Gemini call (no RAG) ──────────────────────
-    # Use a simplified system prompt (no JSON format) so the answer reads
-    # as natural prose — this produces much better embeddings for HyDE retrieval.
     system_prompt = _build_system_prompt(db, payload)
-    phase1_system = (
-        "Eres un experto programador de robots industriales Denso RC7. "
-        "Responde en español de forma técnica y detallada. "
-        "Puedes incluir fragmentos de código PAC si son relevantes."
-    )
+
+    # ── Phase 1: Direct Gemini call for HyDE embedding ────────────
     phase1_message = payload.prompt
     if payload.current_code.strip():
         phase1_message = (
@@ -313,17 +317,16 @@ def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
         )
     initial_answer = _call_gemini(
         phase1_message,
-        system_instruction=phase1_system,
+        system_instruction=_PHASE1_SYSTEM,
         temperature=temperature,
         max_output_tokens=max_tokens,
     )
 
     # ── Phase 2: Embed (query + initial answer) → retrieve chunks ─
-    embed_input = f"{payload.prompt}\n{initial_answer[:600]}"
-    query_embedding = _embed_query(embed_input)
+    query_embedding = _embed_query(f"{payload.prompt}\n{initial_answer[:600]}")
     retrieved = _retrieve_chunks(db, query_embedding, top_k=top_k)
 
-    # ── Phase 3: Build RAG context ────────────────────────────────
+    # ── Phase 3: Build RAG context up to budget ───────────────────
     context_chunks: list[str] = []
     total_chars = 0
     reference_map: dict[int, tuple[Manual, int]] = {}
@@ -336,42 +339,56 @@ def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
         reference_map[chunk.id] = (manual, chunk.page_number)
         total_chars += len(fragment)
 
-    # ── Phase 4: Final structured call with RAG context ───────────
+    # ── Build phase 4 message ─────────────────────────────────────
     if context_chunks:
-        # RAG has relevant documentation — ground the answer in it
-        user_message = _build_user_message(payload, context_chunks)
-        raw_text = _call_gemini(
-            user_message,
-            system_instruction=system_prompt,
-            temperature=temperature,
-            max_output_tokens=max_tokens,
-        )
+        phase4_message = _build_user_message(payload, context_chunks)
     else:
-        # No embedded chunks available yet (embeddings not generated or DB empty).
-        # Fall back to system-prompt-only generation so the assistant still works.
-        # The summary will note the absence of manual context.
-        no_rag_note = (
-            "AVISO: Los manuales del sistema aún no tienen embeddings generados, "
-            "por lo que esta respuesta se basa en las reglas de sintaxis PAC incluidas "
-            "en el prompt del sistema. Genera el código solicitado de la mejor forma "
-            "posible usando esas reglas, e indica en el summary que no se usó contexto "
-            "de manuales en esta respuesta."
-        )
-        fallback_message = f"{no_rag_note}\n\nCONSULTA DEL USUARIO:\n{payload.prompt}"
+        phase4_message = f"{_NO_RAG_NOTE}\n\nCONSULTA DEL USUARIO:\n{payload.prompt}"
         if payload.current_code.strip():
-            fallback_message = (
-                f"{no_rag_note}\n\n"
+            phase4_message = (
+                f"{_NO_RAG_NOTE}\n\n"
                 f"CÓDIGO PAC ACTUAL EN EL CANVAS:\n```pac\n{payload.current_code}\n```\n\n"
                 f"CONSULTA DEL USUARIO:\n{payload.prompt}"
             )
-        raw_text = _call_gemini(
-            fallback_message,
-            system_instruction=system_prompt,
-            temperature=temperature,
-            max_output_tokens=max_tokens,
-        )
 
-    # ── Parse structured JSON ──────────────────────────────────────
+    return context_chunks, reference_map, system_prompt, phase4_message
+
+
+# ── Public entry point ─────────────────────────────────────────────
+
+
+def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
+    """Four-phase RAG pipeline: HyDE → retrieval → context → structured response.
+
+    Phase 1: Query → Gemini (prose, no JSON) for richer HyDE embedding.
+    Phase 2: Embed (query + Phase 1 answer) → retrieve top-k manual chunks.
+    Phase 3: Build RAG context from retrieved chunks.
+    Phase 4: Final Gemini call with RAG context → structured JSON response.
+    """
+    top_k = int(get_setting_value(db, "rag_top_k_chunks", str(_TOP_K)))
+    max_ctx = int(
+        get_setting_value(db, "rag_context_budget_chars", str(_MAX_CTX_CHARS))
+    )
+    temperature = float(get_setting_value(db, "gemini_temperature", str(_TEMPERATURE)))
+    max_tokens = int(get_setting_value(db, "gemini_max_tokens", str(_MAX_TOKENS)))
+
+    _context_chunks, reference_map, system_prompt, phase4_message = _run_rag_phases(
+        db,
+        payload,
+        top_k=top_k,
+        max_ctx=max_ctx,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
+
+    # ── Phase 4: Final structured call ────────────────────────────
+    raw_text = _call_gemini(
+        phase4_message,
+        system_instruction=system_prompt,
+        temperature=temperature,
+        max_output_tokens=max_tokens,
+    )
+
     try:
         data = _parse_gemini_json(raw_text)
     except Exception:
@@ -380,10 +397,8 @@ def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
     summary = str(data.get("summary", "")).strip()
     pac_code = str(data.get("pac_code", "")).strip()
 
-    # ── Build references — only from RAG chunks, never from Gemini ──
     seen_titles: set[str] = set()
     references: list[ReferenceItem] = []
-
     for _manual, page in reference_map.values():
         key = f"{_manual.title}:{page}"
         if key not in seen_titles:
@@ -410,7 +425,6 @@ def stream_rag_response(
     """
     import json
 
-    # ── Read runtime settings ─────────────────────────────────────
     top_k = int(get_setting_value(db, "rag_top_k_chunks", str(_TOP_K)))
     max_ctx = int(
         get_setting_value(db, "rag_context_budget_chars", str(_MAX_CTX_CHARS))
@@ -418,71 +432,22 @@ def stream_rag_response(
     temperature = float(get_setting_value(db, "gemini_temperature", str(_TEMPERATURE)))
     max_tokens = int(get_setting_value(db, "gemini_max_tokens", str(_MAX_TOKENS)))
 
-    # ── Phase 1: Direct Gemini call (no RAG) ──────────────────────
-    system_prompt = _build_system_prompt(db, payload)
-    phase1_system = (
-        "Eres un experto programador de robots industriales Denso RC7. "
-        "Responde en español de forma técnica y detallada. "
-        "Puedes incluir fragmentos de código PAC si son relevantes."
-    )
-    phase1_message = payload.prompt
-    if payload.current_code.strip():
-        phase1_message = (
-            f"CÓDIGO PAC ACTUAL EN EL CANVAS:\n```pac\n{payload.current_code}\n```\n\n"
-            f"CONSULTA DEL USUARIO:\n{payload.prompt}"
-        )
-    initial_answer = _call_gemini(
-        phase1_message,
-        system_instruction=phase1_system,
+    _context_chunks, reference_map, system_prompt, gemini_message = _run_rag_phases(
+        db,
+        payload,
+        top_k=top_k,
+        max_ctx=max_ctx,
         temperature=temperature,
-        max_output_tokens=max_tokens,
+        max_tokens=max_tokens,
     )
-
-    # ── Phase 2: Embed (query + initial answer) → retrieve chunks ─
-    embed_input = f"{payload.prompt}\n{initial_answer[:600]}"
-    query_embedding = _embed_query(embed_input)
-    retrieved = _retrieve_chunks(db, query_embedding, top_k=top_k)
-
-    # ── Phase 3: Build RAG context ────────────────────────────────
-    context_chunks: list[str] = []
-    total_chars = 0
-    reference_map: dict[int, tuple[Manual, int]] = {}
-
-    for chunk, manual, _score in retrieved:
-        fragment = f"[{manual.title} — pág. {chunk.page_number}]\n{chunk.text}"
-        if total_chars + len(fragment) > max_ctx:
-            break
-        context_chunks.append(fragment)
-        reference_map[chunk.id] = (manual, chunk.page_number)
-        total_chars += len(fragment)
 
     # ── Phase 4: Stream final Gemini response ─────────────────────
-    if context_chunks:
-        gemini_message = _build_user_message(payload, context_chunks)
-        gemini_system = system_prompt
-    else:
-        no_rag_note = (
-            "AVISO: Los manuales del sistema aún no tienen embeddings generados, "
-            "por lo que esta respuesta se basa en las reglas de sintaxis PAC incluidas "
-            "en el prompt del sistema. Genera el código solicitado de la mejor forma "
-            "posible usando esas reglas, e indica en el summary que no se usó contexto "
-            "de manuales en esta respuesta."
-        )
-        gemini_message = f"{no_rag_note}\n\nCONSULTA DEL USUARIO:\n{payload.prompt}"
-        if payload.current_code.strip():
-            gemini_message = (
-                f"{no_rag_note}\n\n"
-                f"CÓDIGO PAC ACTUAL EN EL CANVAS:\n```pac\n{payload.current_code}\n```\n\n"
-                f"CONSULTA DEL USUARIO:\n{payload.prompt}"
-            )
-        gemini_system = system_prompt
-
     full_text = ""
     last_keepalive = time.time()
 
     for chunk_text in _call_gemini_stream(
         gemini_message,
-        system_instruction=gemini_system,
+        system_instruction=system_prompt,
         temperature=temperature,
         max_output_tokens=max_tokens,
     ):
@@ -493,7 +458,6 @@ def stream_rag_response(
             last_keepalive = now
         yield f"data: {json.dumps({'type': 'chunk', 'content': chunk_text})}\n\n"
 
-    # ── Parse structured JSON ──────────────────────────────────────
     try:
         data = _parse_gemini_json(full_text)
     except Exception:
