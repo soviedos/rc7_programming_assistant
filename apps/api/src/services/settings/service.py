@@ -153,7 +153,7 @@ DEFAULT_SETTINGS: dict[str, tuple[str, str]] = {
         "Temperatura de generación de Gemini (0.0 – 1.0)",
     ),
     "gemini_max_tokens": (
-        "2048",
+        "8192",
         "Límite de tokens de salida para Gemini",
     ),
     "gemini_timeout_seconds": (

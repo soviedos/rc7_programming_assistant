@@ -25,7 +25,7 @@ _GEN_MODEL = "gemini-2.5-flash"
 _TOP_K = 6
 _MAX_CTX_CHARS = 12_000
 _TEMPERATURE = 0.7
-_MAX_TOKENS = 2048
+_MAX_TOKENS = 8192
 
 # Category boost multipliers applied to cosine similarity scores.
 # A value of 1.0 means no boost; >1.0 promotes chunks from that category.
@@ -224,6 +224,7 @@ def _call_gemini(
     *,
     temperature: float = _TEMPERATURE,
     max_output_tokens: int = _MAX_TOKENS,
+    force_json: bool = False,
 ) -> str:
     """Call Gemini with retries; returns raw text or raises RuntimeError."""
     client = _get_client()
@@ -231,6 +232,7 @@ def _call_gemini(
         system_instruction=system_instruction,
         temperature=temperature,
         max_output_tokens=max_output_tokens,
+        **(dict(response_mime_type="application/json") if force_json else {}),
     )
     last_exc: Exception | None = None
     for attempt in range(1, 4):
@@ -260,6 +262,7 @@ def _call_gemini_stream(
     *,
     temperature: float = _TEMPERATURE,
     max_output_tokens: int = _MAX_TOKENS,
+    force_json: bool = False,
 ) -> Iterator[str]:
     """Yield raw text chunks from the Gemini streaming API."""
     client = _get_client()
@@ -267,6 +270,7 @@ def _call_gemini_stream(
         system_instruction=system_instruction,
         temperature=temperature,
         max_output_tokens=max_output_tokens,
+        **(dict(response_mime_type="application/json") if force_json else {}),
     )
     for chunk in client.models.generate_content_stream(
         model=_GEN_MODEL,
@@ -392,6 +396,7 @@ def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
         system_instruction=system_prompt,
         temperature=temperature,
         max_output_tokens=max_tokens,
+        force_json=True,
     )
 
     try:
@@ -455,6 +460,7 @@ def stream_rag_response(
         system_instruction=system_prompt,
         temperature=temperature,
         max_output_tokens=max_tokens,
+        force_json=True,
     ):
         full_text += chunk_text
         now = time.time()

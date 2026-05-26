@@ -26,7 +26,7 @@ Todos los endpoints requieren rol `admin`.
 | Clave | Tipo | Default | Descripción | Efecto en el pipeline |
 |---|---|---|---|---|
 | `gemini_temperature` | `float` | `0.7` | Temperatura de generación Gemini (0.0–1.0) | Controla la aleatoriedad de las respuestas: 0.0 = determinista, 1.0 = más creativo |
-| `gemini_max_tokens` | `int` | `2048` | Límite de tokens de salida en Gemini | Respuestas truncadas si el modelo alcanza el límite |
+| `gemini_max_tokens` | `int` | `8192` | Límite de tokens de salida en Gemini (Phase 4 fuerza `response_mime_type=application/json` para emitir JSON puro) | Respuestas truncadas si el modelo alcanza el límite; con Gemini 2.5 Flash se recomienda ≥ 8192 para código PAC completo |
 | `gemini_timeout_seconds` | `int` | `300` | Timeout (segundos) para cada llamada a Gemini | Requests más largos que este valor fallan con timeout |
 | `rag_top_k_chunks` | `int` | `6` | Chunks recuperados por consulta en la búsqueda coseno | Más chunks = más contexto, más costo de tokens |
 | `rag_context_budget_chars` | `int` | `12000` | Presupuesto de caracteres de contexto enviado a Gemini | Limita el tamaño del contexto RAG en la Fase 4 |
