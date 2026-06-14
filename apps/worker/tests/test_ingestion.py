@@ -292,14 +292,11 @@ def test_recover_stuck_processing_manuals_requeues_processing(
 
         assert refreshed_a.status == "pending"
         assert refreshed_b.status == "pending"
-        assert (
-            refreshed_a.last_error
-            == "Reencolado automaticamente tras reinicio del worker."
-        )
-        assert (
-            refreshed_b.last_error
-            == "Reencolado automaticamente tras reinicio del worker."
-        )
+        # recover_stuck_processing_manuals appends a "[crash]" marker to
+        # last_error on each requeue (see jobs/ingestion.py); a fresh stuck
+        # manual (last_error=None) becomes exactly "[crash]".
+        assert refreshed_a.last_error == "[crash]"
+        assert refreshed_b.last_error == "[crash]"
         assert refreshed_pending.status == "pending"
 
 

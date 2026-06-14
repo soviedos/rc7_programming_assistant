@@ -164,7 +164,22 @@ def generate_code(
                             )
                     except Exception:
                         pass
-        except Exception:
+        except Exception as exc:
+            # Audit the failure (best-effort) so a mid-stream error is observable
+            # even though no history entry is persisted for a partial response.
+            try:
+                log_event(
+                    db,
+                    "CHAT_QUERY_FAILED",
+                    "Pipeline de chat falló durante el streaming",
+                    actor_id=user.id,
+                    actor_email=user.email,
+                    resource_type="chat",
+                    metadata={"robot_type": payload.robot_type, "error": str(exc)[:300]},
+                    ip_address=ip,
+                )
+            except Exception:
+                pass
             yield f"data: {json.dumps({'type': 'error', 'message': 'Pipeline fallido'})}\n\n"
             return
 

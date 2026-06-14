@@ -51,6 +51,9 @@ def _ensure_test_db() -> None:
 def engine():
     _ensure_test_db()
     eng = create_engine(_TEST_DATABASE_URL)
+    # pgvector must be enabled before create_all emits the vector(N) column.
+    with eng.begin() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     Base.metadata.create_all(bind=eng)
     yield eng
     Base.metadata.drop_all(bind=eng)

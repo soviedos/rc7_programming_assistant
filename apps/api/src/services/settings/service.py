@@ -131,8 +131,10 @@ muestre completas.
 - NUNCA inventes números de página, códigos de error numéricos ni valores de \
 temporización que no aparezcan en el contexto. Si un dato específico no está, \
 usa un comentario indicando que debe configurarse ('ajustar según aplicación').
-- NUNCA incluyas referencias bibliográficas en el JSON; el campo 'references' \
-debe quedar siempre como array vacío []. Las referencias las gestiona el sistema.
+- El campo 'references' debe contener SOLO los IDs de fuente [SX] del CONTEXTO que \
+realmente usaste (p. ej. ["S1","S3"]), o [] si no usaste ninguna fuente. NUNCA inventes \
+IDs que no aparezcan en el CONTEXTO. Cada instrucción o bloque PAC tomado de una fuente debe \
+llevar al final un comentario con su ID, p. ej.: MOVE P, P1    ' fuente: S2
 
 Reglas adicionales:
 1. NUNCA omitas el PROGRAM ni el END.
@@ -167,6 +169,10 @@ DEFAULT_SETTINGS: dict[str, tuple[str, str]] = {
     "rag_context_budget_chars": (
         "12000",
         "Presupuesto de caracteres para el contexto RAG",
+    ),
+    "rag_candidate_pool": (
+        "50",
+        "Vecinos recuperados de pgvector antes del re-rank por hardware/categoría",
     ),
     "system_prompt_pac": (
         _DEFAULT_PAC_RULES,

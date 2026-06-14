@@ -71,10 +71,23 @@ def find_duplicate_manual_by_sha256(
     content: bytes,
 ) -> Manual | None:
     incoming_hash = hashlib.sha256(content).hexdigest()
+
+    # Fast path: a stored SHA-256 match needs no download from MinIO.
+    stored_match = db_session.scalar(
+        select(Manual)
+        .where(Manual.sha256 == incoming_hash)
+        .order_by(Manual.created_at.desc(), Manual.id.desc())
+    )
+    if stored_match:
+        return stored_match
+
+    # Fallback: only same-size manuals WITHOUT a stored hash must be downloaded
+    # and hashed to compare (legacy rows uploaded before sha256 was persisted).
     candidates = list(
         db_session.scalars(
             select(Manual)
             .where(Manual.size_bytes == len(content))
+            .where(Manual.sha256.is_(None))
             .order_by(Manual.created_at.desc(), Manual.id.desc())
         )
     )
@@ -85,8 +98,7 @@ def find_duplicate_manual_by_sha256(
         except ManualStorageError:
             continue
 
-        existing_hash = hashlib.sha256(existing_content).hexdigest()
-        if existing_hash == incoming_hash:
+        if hashlib.sha256(existing_content).hexdigest() == incoming_hash:
             return candidate
 
     return None

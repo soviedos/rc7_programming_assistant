@@ -11,7 +11,8 @@ from google.genai import types
 from src.core.config import settings
 from src.utils.logging import log
 
-_EMBEDDING_MODEL = "gemini-embedding-001"
+_EMBEDDING_MODEL = settings.gemini_embedding_model
+_OUTPUT_DIMENSIONALITY = 3072  # must match _EMBED_DIM in apps/api
 _BATCH_SIZE = 100  # max texts per batch call
 _RETRY_LIMIT = 3
 _RETRY_BACKOFF = 2.0  # seconds
@@ -22,7 +23,7 @@ def _get_client() -> genai.Client:
 
 
 def embed_texts(texts: Sequence[str]) -> list[list[float]]:
-    """Return one embedding vector per input text (dimension 768).
+    """Return one embedding vector per input text (dimension _OUTPUT_DIMENSIONALITY).
 
     Processes in batches and retries on transient errors.
     Returns an empty list for each text that ultimately fails.
@@ -34,10 +35,18 @@ def embed_texts(texts: Sequence[str]) -> list[list[float]]:
         batch = list(texts[batch_start : batch_start + _BATCH_SIZE])
         for attempt in range(1, _RETRY_LIMIT + 1):
             try:
+                contents = [
+                    types.Content(
+                        parts=[types.Part.from_text(text=f"title: none | text: {t}")]
+                    )
+                    for t in batch
+                ]
                 response = client.models.embed_content(
                     model=_EMBEDDING_MODEL,
-                    contents=batch,
-                    config=types.EmbedContentConfig(task_type="RETRIEVAL_DOCUMENT"),
+                    contents=contents,
+                    config=types.EmbedContentConfig(
+                        output_dimensionality=_OUTPUT_DIMENSIONALITY
+                    ),
                 )
                 results.extend([list(e.values) for e in response.embeddings])
                 break

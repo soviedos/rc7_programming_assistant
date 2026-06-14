@@ -4,7 +4,9 @@ import json
 from collections import Counter
 from dataclasses import dataclass
 from hashlib import sha1
-from urllib import error, request
+
+from google import genai
+from google.genai import types
 
 from src.chunking.text import TextChunk
 from src.core.config import settings
@@ -279,39 +281,25 @@ class GeminiSemanticReviewer:
         )
 
     def _call_gemini(self, prompt: str) -> str:
-        url = (
-            f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}:generateContent"
-            f"?key={self._api_key}"
+        client = genai.Client(
+            api_key=self._api_key,
+            http_options=types.HttpOptions(
+                timeout=self._timeout_seconds * 1000,  # SDK expects ms
+            ),
         )
-        body = {
-            "generationConfig": {
-                "temperature": 0.1,
-                "responseMimeType": "application/json",
-            },
-            "contents": [{"parts": [{"text": prompt}]}],
-        }
-
-        payload = json.dumps(body).encode("utf-8")
-        req = request.Request(
-            url,
-            method="POST",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-        )
-
         try:
-            with request.urlopen(req, timeout=self._timeout_seconds) as response:
-                raw = json.loads(response.read().decode("utf-8"))
-        except error.HTTPError as exc:
-            raise SemanticReviewError(f"Gemini HTTP {exc.code}") from exc
-        except error.URLError as exc:
-            raise SemanticReviewError("No se pudo conectar a Gemini.") from exc
+            response = client.models.generate_content(
+                model=self._model,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    temperature=0.1,
+                    response_mime_type="application/json",
+                ),
+            )
+        except Exception as exc:
+            raise SemanticReviewError(f"No se pudo conectar a Gemini: {exc}") from exc
 
-        parts = raw.get("candidates", [{}])[0].get("content", {}).get("parts", [])
-        if not parts:
-            raise SemanticReviewError("Gemini no devolvio contenido util.")
-
-        text = parts[0].get("text", "")
+        text = response.text
         if not text:
             raise SemanticReviewError("Gemini devolvio respuesta vacia.")
         return text

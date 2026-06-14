@@ -18,6 +18,9 @@ class Manual(Base):
     storage_key: Mapped[str] = mapped_column(String(512), unique=True, index=True)
     content_type: Mapped[str] = mapped_column(String(120))
     size_bytes: Mapped[int] = mapped_column(Integer)
+    # Parity with the API model (column created by API init.py); the worker does
+    # not write it, but the ORM view should match the real table.
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
     robot_model: Mapped[str | None] = mapped_column(String(120), nullable=True)

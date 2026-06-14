@@ -374,7 +374,7 @@ async def delete_user(
     db_session.commit()
     log_event(
         db_session,
-        "ADMIN_USER_TOGGLED",
+        "ADMIN_USER_DELETED",
         f"Usuario eliminado: {deleted_email}",
         actor_id=current_admin.id,
         actor_email=current_admin.email,

@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import math
 import time
 from collections.abc import Iterator
-from typing import Sequence
 
 from google import genai
 from google.genai import types
-from sqlalchemy import select
+from pgvector.sqlalchemy import HALFVEC
+from sqlalchemy import cast, select, text
 from sqlalchemy.orm import Session
 
 from src.api.v1.schemas.chat import ChatRequest, ChatResponse, ReferenceItem
@@ -18,14 +17,22 @@ from src.db.models.manual import Manual
 from src.db.models.manual_chunk import ManualChunk
 from src.services.settings.service import _DEFAULT_PAC_RULES, get_setting_value
 
-_EMBED_MODEL = "gemini-embedding-001"
-_GEN_MODEL = "gemini-2.5-flash"
+# Model names are centralised in config (env-overridable) — not hardcoded here.
+_EMBED_MODEL = settings.gemini_embedding_model
+_EMBED_DIM = 3072
+_GEN_MODEL = settings.gemini_model
 
 # Fallback constants — used when DB settings are unavailable.
 _TOP_K = 6
 _MAX_CTX_CHARS = 12_000
 _TEMPERATURE = 0.7
 _MAX_TOKENS = 8192
+
+# Default number of nearest neighbours to pull from pgvector before applying the
+# category/hardware re-ranking in Python (overridable via the rag_candidate_pool
+# setting). Wider than _TOP_K so the boost can promote relevant chunks that are
+# not the very closest by raw cosine.
+_VECTOR_CANDIDATE_POOL = 50
 
 # Category boost multipliers applied to cosine similarity scores.
 # A value of 1.0 means no boost; >1.0 promotes chunks from that category.
@@ -36,64 +43,194 @@ _CATEGORY_BOOST: dict[str, float] = {
     "errors": 1.10,
 }
 
+# Hardware-compatibility multipliers. Each dimension of the manual's hardware
+# metadata is compared against the user's robot configuration (ChatRequest):
+#   * a match boosts the chunk (>1.0),
+#   * a present-but-different value mildly penalises it (<1.0),
+#   * missing metadata is neutral (1.0) so unlabelled chunks are never degraded.
+_HW_ROBOT_MATCH_BOOST = 1.30
+_HW_ROBOT_MISMATCH_PENALTY = 0.70
+_HW_CONTROLLER_MATCH_BOOST = 1.15
+_HW_CONTROLLER_MISMATCH_PENALTY = 0.85
+
 
 # ── Helpers ────────────────────────────────────────────────────────
 
 
-def _get_client() -> genai.Client:
-    import httpx
-
+def _get_client(timeout_seconds: int | None = None) -> genai.Client:
+    timeout = (
+        timeout_seconds if timeout_seconds is not None else settings.gemini_timeout_seconds
+    )
     return genai.Client(
         api_key=settings.gemini_api_key,
         http_options=types.HttpOptions(
-            timeout=settings.gemini_timeout_seconds * 1000,  # SDK expects ms
+            timeout=timeout * 1000,  # SDK expects ms
         ),
     )
 
 
-def _embed_query(text_input: str) -> list[float]:
-    client = _get_client()
+def _embed_query(text_input: str, timeout_seconds: int | None = None) -> list[float]:
+    client = _get_client(timeout_seconds)
+    prefixed = f"task: search result | query: {text_input}"
     result = client.models.embed_content(
         model=_EMBED_MODEL,
-        contents=text_input,
-        config=types.EmbedContentConfig(task_type="RETRIEVAL_QUERY"),
+        contents=prefixed,
+        config=types.EmbedContentConfig(output_dimensionality=_EMBED_DIM),
     )
     return list(result.embeddings[0].values)
 
 
-def _cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(x * x for x in b))
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return dot / (norm_a * norm_b)
+def _resolve_references(
+    raw_refs: object,
+    source_map: dict[str, tuple[Manual, int]],
+) -> list[tuple[str, str]]:
+    """Resolve model-cited source IDs to deduplicated (title, page) pairs.
+
+    Extracts ``S<number>`` IDs from the model's ``references`` value, keeps only
+    those present in ``source_map`` (discarding hallucinated IDs), and falls back
+    to the full retrieved set when none of the cited IDs are valid.
+    """
+    import re
+
+    cited: list[str] = []
+    if isinstance(raw_refs, (list, tuple)):
+        for item in raw_refs:
+            cited.extend(re.findall(r"S\d+", str(item)))
+    else:
+        cited = re.findall(r"S\d+", str(raw_refs or ""))
+
+    valid_ids = [sid for sid in cited if sid in source_map]
+    if not valid_ids:
+        valid_ids = list(source_map.keys())
+
+    seen: set[str] = set()
+    references: list[tuple[str, str]] = []
+    for sid in valid_ids:
+        manual, page = source_map[sid]
+        key = f"{manual.title}:{page}"
+        if key not in seen:
+            seen.add(key)
+            references.append((manual.title, str(page)))
+    return references
+
+
+def _normalize_hw(value: str | None) -> str:
+    """Lowercase, alphanumeric-only form for tolerant hardware comparison.
+
+    Collapses separator/format noise so e.g. ``"VS-060"`` and ``"VS060"`` —
+    or ``"RC7"`` and ``"RC7.2"`` — compare on their meaningful tokens.
+    """
+    if not value:
+        return ""
+    return "".join(ch for ch in value.lower() if ch.isalnum())
+
+
+def _hardware_compatibility_boost(manual: Manual, payload: ChatRequest) -> float:
+    """Multiplier reflecting how well a manual's hardware matches the user's robot.
+
+    Two independent dimensions are scored and multiplied:
+
+    * **Robot model** — ``manual.robot_model`` vs ``payload.robot_type``.
+    * **Controller / firmware** — ``manual.controller_version`` vs
+      ``payload.controller`` (the controller_version string also carries the
+      firmware revision, e.g. ``"RC7.2"``; the payload only specifies the
+      controller family, so matching is done at that granularity).
+
+    Each dimension yields a factor that is neutral (``1.0``) when the manual has
+    no metadata for it — so chunks without configuration metadata keep their raw
+    similarity and are never degraded — a boost when it matches, and a mild
+    penalty when it is present but refers to different hardware.
+    """
+    robot_factor = 1.0
+    manual_model = _normalize_hw(manual.robot_model)
+    if manual_model:
+        payload_model = _normalize_hw(payload.robot_type)
+        matches = bool(payload_model) and (
+            manual_model == payload_model
+            or manual_model in payload_model
+            or payload_model in manual_model
+        )
+        robot_factor = _HW_ROBOT_MATCH_BOOST if matches else _HW_ROBOT_MISMATCH_PENALTY
+
+    controller_factor = 1.0
+    manual_ctrl = _normalize_hw(manual.controller_version)
+    if manual_ctrl:
+        payload_ctrl = _normalize_hw(payload.controller)
+        matches = bool(payload_ctrl) and (
+            manual_ctrl.startswith(payload_ctrl) or payload_ctrl.startswith(manual_ctrl)
+        )
+        controller_factor = (
+            _HW_CONTROLLER_MATCH_BOOST if matches else _HW_CONTROLLER_MISMATCH_PENALTY
+        )
+
+    return robot_factor * controller_factor
 
 
 def _retrieve_chunks(
     db: Session,
     query_embedding: list[float],
+    payload: ChatRequest,
     top_k: int = _TOP_K,
+    candidate_pool: int = _VECTOR_CANDIDATE_POOL,
 ) -> list[tuple[ManualChunk, Manual, float]]:
-    """Retrieve top-k chunks with cosine similarity using PostgreSQL REAL[]."""
-    # Fetch all chunks that have an embedding (limit to a reasonable cap to avoid OOM)
+    """Retrieve top-k chunks via pgvector cosine distance, then re-rank by score.
+
+    Postgres orders a wide candidate pool by cosine distance using the ``<=>``
+    operator (HNSW-accelerated through a halfvec cast, since pgvector caps
+    ``vector`` HNSW indexes at 2000 dimensions). The pool is then re-ranked in
+    Python to prioritise chunks whose manual matches the user's robot
+    configuration and pick the top-k.
+
+    Scoring formula (higher is better)::
+
+        score(chunk) = cosine_similarity · hardware_factor · category_factor
+
+    where:
+
+    * ``cosine_similarity = 1 − (embedding <=> query)`` — the raw semantic match.
+    * ``hardware_factor   = robot_factor · controller_factor`` — see
+      :func:`_hardware_compatibility_boost`. Boosts manuals matching the
+      payload's robot model / controller, mildly penalises manuals for other
+      hardware, and is neutral (``1.0``) for chunks lacking hardware metadata so
+      they are never degraded.
+    * ``category_factor   = max(_CATEGORY_BOOST[c] for c in manual.categories)``
+      (default ``1.0``) — a secondary nudge by document category.
+
+    Incompatible chunks are demoted (soft "limiting") rather than hard-filtered,
+    so the context is never left empty when no manual matches the exact hardware.
+    """
+    # Cast both sides to halfvec so the ORDER BY matches the HNSW index
+    # expression and pgvector can use it instead of a full scan.
+    half = HALFVEC(_EMBED_DIM)
+    distance = cast(ManualChunk.embedding, half).cosine_distance(
+        cast(query_embedding, half)
+    )
+
+    # Raise HNSW ef_search to at least the candidate pool so the index returns
+    # enough neighbours for a meaningful re-rank (transaction-local; PG only).
+    # SET LOCAL does not accept bind params; the value is an internal int.
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        ef_search = max(int(candidate_pool), 40)
+        db.execute(text(f"SET LOCAL hnsw.ef_search = {ef_search}"))
+
     rows = db.execute(
-        select(ManualChunk, Manual)
+        select(ManualChunk, Manual, distance.label("distance"))
         .join(Manual, Manual.id == ManualChunk.manual_id)
         .where(ManualChunk.embedding.isnot(None))
-        .limit(5000)
+        .order_by(distance)
+        .limit(candidate_pool)
     ).all()
 
     scored: list[tuple[ManualChunk, Manual, float]] = []
-    for chunk, manual in rows:
-        if not chunk.embedding:
-            continue
-        sim = _cosine_similarity(query_embedding, chunk.embedding)
-        boost = max(
+    for chunk, manual, distance_val in rows:
+        # cosine distance (<=>) is 1 - cosine similarity.
+        similarity = 1.0 - float(distance_val)
+        hardware_factor = _hardware_compatibility_boost(manual, payload)
+        category_factor = max(
             (_CATEGORY_BOOST.get(cat, 1.0) for cat in (manual.categories or [])),
             default=1.0,
         )
-        scored.append((chunk, manual, sim * boost))
+        scored.append((chunk, manual, similarity * hardware_factor * category_factor))
 
     scored.sort(key=lambda x: x[2], reverse=True)
     return scored[:top_k]
@@ -146,10 +283,19 @@ def _build_system_prompt(db: Session, payload: ChatRequest) -> str:
         "  summary   → texto plano explicativo. NUNCA incluyas código PAC aquí.\n"
         "  pac_code  → el programa PAC completo como cadena de texto plano, SIN backticks "
         "ni bloques markdown. Cadena vacía '' si no aplica.\n"
-        "  references → siempre array vacío [].\n\n"
+        "  references → array con los IDs de fuente realmente usados (p. ej. [\"S1\",\"S3\"]). "
+        "Usa SOLO IDs que aparezcan en el CONTEXTO. Si no usaste ninguna fuente, devuelve [].\n\n"
+        "TRAZABILIDAD — CRÍTICO:\n"
+        "El CONTEXTO extraído de los manuales viene etiquetado con IDs [S1], [S2], …\n"
+        "Cada instrucción o bloque PAC que provenga de una fuente DEBE llevar al final un "
+        "comentario PAC con el ID de esa fuente, usando el apóstrofo (comentario válido en PAC), "
+        "por ejemplo:\n"
+        "  MOVE P, P1    ' fuente: S2\n"
+        "NUNCA inventes IDs que no estén en el CONTEXTO; usa únicamente los IDs [SX] presentes.\n\n"
         "Ejemplo de respuesta CORRECTA:\n"
         '{"summary":"Programa pick and place que recoge en A y coloca en B.","pac_code":'
-        '"#INCLUDE \\"dio_tab.h\\"\\nPROGRAM pickPlace\\n    TAKEARM\\n    GIVEARM\\nEND","references":[]}\n\n'
+        '"#INCLUDE \\"dio_tab.h\\"\\nPROGRAM pickPlace\\n    TAKEARM\\n    MOVE P, P1    \' fuente: S1\\n'
+        '    GIVEARM\\nEND","references":["S1"]}\n\n'
         "INCORRECTO — nunca pongas código PAC dentro del campo summary."
     )
 
@@ -225,9 +371,10 @@ def _call_gemini(
     temperature: float = _TEMPERATURE,
     max_output_tokens: int = _MAX_TOKENS,
     force_json: bool = False,
+    timeout_seconds: int | None = None,
 ) -> str:
     """Call Gemini with retries; returns raw text or raises RuntimeError."""
-    client = _get_client()
+    client = _get_client(timeout_seconds)
     gen_config = types.GenerateContentConfig(
         system_instruction=system_instruction,
         temperature=temperature,
@@ -263,9 +410,10 @@ def _call_gemini_stream(
     temperature: float = _TEMPERATURE,
     max_output_tokens: int = _MAX_TOKENS,
     force_json: bool = False,
+    timeout_seconds: int | None = None,
 ) -> Iterator[str]:
     """Yield raw text chunks from the Gemini streaming API."""
-    client = _get_client()
+    client = _get_client(timeout_seconds)
     gen_config = types.GenerateContentConfig(
         system_instruction=system_instruction,
         temperature=temperature,
@@ -309,10 +457,13 @@ def _run_rag_phases(
     max_ctx: int,
     temperature: float,
     max_tokens: int,
-) -> tuple[list[str], dict[int, tuple[Manual, int]], str, str]:
+    timeout_seconds: int | None = None,
+    candidate_pool: int = _VECTOR_CANDIDATE_POOL,
+) -> tuple[list[str], dict[str, tuple[Manual, int]], str, str]:
     """Run phases 1-3 of the RAG pipeline.
 
-    Returns a 4-tuple: (context_chunks, reference_map, system_prompt, phase4_message).
+    Returns a 4-tuple: (context_chunks, source_map, system_prompt, phase4_message).
+    ``source_map`` maps stable source IDs ("S1", "S2", …) to (manual, page).
     ``phase4_message`` is already built for Phase 4 (RAG context or fallback).
     """
     system_prompt = _build_system_prompt(db, payload)
@@ -329,23 +480,29 @@ def _run_rag_phases(
         system_instruction=_PHASE1_SYSTEM,
         temperature=temperature,
         max_output_tokens=max_tokens,
+        timeout_seconds=timeout_seconds,
     )
 
     # ── Phase 2: Embed (query + initial answer) → retrieve chunks ─
-    query_embedding = _embed_query(f"{payload.prompt}\n{initial_answer[:600]}")
-    retrieved = _retrieve_chunks(db, query_embedding, top_k=top_k)
+    query_embedding = _embed_query(
+        f"{payload.prompt}\n{initial_answer[:600]}", timeout_seconds=timeout_seconds
+    )
+    retrieved = _retrieve_chunks(
+        db, query_embedding, payload, top_k=top_k, candidate_pool=candidate_pool
+    )
 
     # ── Phase 3: Build RAG context up to budget ───────────────────
     context_chunks: list[str] = []
     total_chars = 0
-    reference_map: dict[int, tuple[Manual, int]] = {}
+    source_map: dict[str, tuple[Manual, int]] = {}
 
     for chunk, manual, _score in retrieved:
-        fragment = f"[{manual.title} — pág. {chunk.page_number}]\n{chunk.text}"
+        sid = f"S{len(source_map) + 1}"
+        fragment = f"[{sid} | {manual.title} — pág. {chunk.page_number}]\n{chunk.text}"
         if total_chars + len(fragment) > max_ctx:
             break
         context_chunks.append(fragment)
-        reference_map[chunk.id] = (manual, chunk.page_number)
+        source_map[sid] = (manual, chunk.page_number)
         total_chars += len(fragment)
 
     # ── Build phase 4 message ─────────────────────────────────────
@@ -360,7 +517,7 @@ def _run_rag_phases(
                 f"CONSULTA DEL USUARIO:\n{payload.prompt}"
             )
 
-    return context_chunks, reference_map, system_prompt, phase4_message
+    return context_chunks, source_map, system_prompt, phase4_message
 
 
 # ── Public entry point ─────────────────────────────────────────────
@@ -380,14 +537,24 @@ def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
     )
     temperature = float(get_setting_value(db, "gemini_temperature", str(_TEMPERATURE)))
     max_tokens = int(get_setting_value(db, "gemini_max_tokens", str(_MAX_TOKENS)))
+    timeout_seconds = int(
+        get_setting_value(
+            db, "gemini_timeout_seconds", str(settings.gemini_timeout_seconds)
+        )
+    )
+    candidate_pool = int(
+        get_setting_value(db, "rag_candidate_pool", str(_VECTOR_CANDIDATE_POOL))
+    )
 
-    _context_chunks, reference_map, system_prompt, phase4_message = _run_rag_phases(
+    _context_chunks, source_map, system_prompt, phase4_message = _run_rag_phases(
         db,
         payload,
         top_k=top_k,
         max_ctx=max_ctx,
         temperature=temperature,
         max_tokens=max_tokens,
+        timeout_seconds=timeout_seconds,
+        candidate_pool=candidate_pool,
     )
 
     # ── Phase 4: Final structured call ────────────────────────────
@@ -397,6 +564,7 @@ def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
         temperature=temperature,
         max_output_tokens=max_tokens,
         force_json=True,
+        timeout_seconds=timeout_seconds,
     )
 
     try:
@@ -407,13 +575,10 @@ def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
     summary = str(data.get("summary", "")).strip()
     pac_code = str(data.get("pac_code", "")).strip()
 
-    seen_titles: set[str] = set()
-    references: list[ReferenceItem] = []
-    for _manual, page in reference_map.values():
-        key = f"{_manual.title}:{page}"
-        if key not in seen_titles:
-            seen_titles.add(key)
-            references.append(ReferenceItem(title=_manual.title, page=str(page)))
+    references = [
+        ReferenceItem(title=title, page=page)
+        for title, page in _resolve_references(data.get("references"), source_map)
+    ]
 
     return ChatResponse(
         summary=summary or "Respuesta generada.",
@@ -441,14 +606,24 @@ def stream_rag_response(
     )
     temperature = float(get_setting_value(db, "gemini_temperature", str(_TEMPERATURE)))
     max_tokens = int(get_setting_value(db, "gemini_max_tokens", str(_MAX_TOKENS)))
+    timeout_seconds = int(
+        get_setting_value(
+            db, "gemini_timeout_seconds", str(settings.gemini_timeout_seconds)
+        )
+    )
+    candidate_pool = int(
+        get_setting_value(db, "rag_candidate_pool", str(_VECTOR_CANDIDATE_POOL))
+    )
 
-    _context_chunks, reference_map, system_prompt, gemini_message = _run_rag_phases(
+    _context_chunks, source_map, system_prompt, gemini_message = _run_rag_phases(
         db,
         payload,
         top_k=top_k,
         max_ctx=max_ctx,
         temperature=temperature,
         max_tokens=max_tokens,
+        timeout_seconds=timeout_seconds,
+        candidate_pool=candidate_pool,
     )
 
     # ── Phase 4: Stream final Gemini response ─────────────────────
@@ -461,6 +636,7 @@ def stream_rag_response(
         temperature=temperature,
         max_output_tokens=max_tokens,
         force_json=True,
+        timeout_seconds=timeout_seconds,
     ):
         full_text += chunk_text
         now = time.time()
@@ -477,12 +653,9 @@ def stream_rag_response(
     summary = str(data.get("summary", "")).strip()
     pac_code = str(data.get("pac_code", "")).strip()
 
-    seen_titles: set[str] = set()
-    references: list[dict] = []
-    for _manual, page in reference_map.values():
-        key = f"{_manual.title}:{page}"
-        if key not in seen_titles:
-            seen_titles.add(key)
-            references.append({"title": _manual.title, "page": str(page)})
+    references = [
+        {"title": title, "page": page}
+        for title, page in _resolve_references(data.get("references"), source_map)
+    ]
 
     yield f"data: {json.dumps({'type': 'done', 'summary': summary or 'Respuesta generada.', 'pac_code': pac_code, 'references': references})}\n\n"

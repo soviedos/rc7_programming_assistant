@@ -7,7 +7,7 @@ from sqlalchemy import DateTime, ForeignKey, Integer, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base
-from src.db.types import ArrayOfFloat
+from src.db.types import EmbeddingVector
 
 
 class ManualChunk(Base):
@@ -21,7 +21,7 @@ class ManualChunk(Base):
     page_number: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[Optional[list[float]]] = mapped_column(
-        ArrayOfFloat(), nullable=True
+        EmbeddingVector(), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     minio_root_password: str = "minioadmin"
     minio_bucket_manuals: str = "rc7-manuals"
     gemini_api_key: str = _PLACEHOLDER
+    gemini_model: str = "gemini-3.5-flash"
+    gemini_embedding_model: str = "gemini-embedding-2"
     gemini_timeout_seconds: int = 300
     enable_streaming: bool = True
 

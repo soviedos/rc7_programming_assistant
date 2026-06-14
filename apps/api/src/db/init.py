@@ -46,7 +46,15 @@ DEFAULT_ROLE_PERMISSIONS = [
 ]
 
 
+# Embedding dimensionality — MUST match _EMBED_DIM in the chat service,
+# _OUTPUT_DIMENSIONALITY in the worker, and Vector(N) in the ManualChunk model.
+EMBEDDING_DIM = 3072
+_EMBEDDING_INDEX = "manual_chunks_embedding_hnsw_idx"
+
+
 def initialize_database() -> None:
+    # The pgvector extension must exist before create_all emits the vector column.
+    ensure_vector_extension()
     Base.metadata.create_all(bind=engine)
     ensure_user_columns()
     ensure_manual_columns()
@@ -57,6 +65,14 @@ def initialize_database() -> None:
     seed_bootstrap_admin()
     seed_role_permissions()
     seed_default_settings()
+
+
+def ensure_vector_extension() -> None:
+    """Enable the pgvector extension (no-op on non-PostgreSQL backends)."""
+    if engine.dialect.name != "postgresql":
+        return
+    with engine.begin() as connection:
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
 
 
 def ensure_user_columns() -> None:
@@ -116,21 +132,62 @@ def ensure_manual_columns() -> None:
 
 
 def ensure_chunk_embedding_column() -> None:
-    """Add embedding REAL[] column to manual_chunks if it does not exist yet."""
+    """Ensure manual_chunks.embedding is a pgvector ``vector(EMBEDDING_DIM)`` column.
+
+    Idempotent migration that also upgrades existing installations: a legacy
+    ``REAL[]`` (or wrong-dimension) column is dropped and recreated as
+    ``vector(EMBEDDING_DIM)``. This is safe because embeddings are repopulated by
+    re-embedding rather than migrated in place. Finally an HNSW cosine index is
+    created. Because pgvector caps HNSW on ``vector`` at 2000 dimensions, the
+    index is built on a ``halfvec`` cast (supports up to 4000 dims).
+    """
     inspector = inspect(engine)
-    table_names = set(inspector.get_table_names())
-    if "manual_chunks" not in table_names:
+    if "manual_chunks" not in set(inspector.get_table_names()):
         return
 
-    chunk_columns = {
-        column["name"] for column in inspector.get_columns("manual_chunks")
-    }
-    if "embedding" in chunk_columns:
+    if engine.dialect.name != "postgresql":
+        chunk_columns = {
+            column["name"] for column in inspector.get_columns("manual_chunks")
+        }
+        if "embedding" not in chunk_columns:
+            with engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE manual_chunks ADD COLUMN embedding JSON")
+                )
         return
 
+    target_type = f"vector({EMBEDDING_DIM})"
     with engine.begin() as connection:
+        current_type = connection.execute(
+            text(
+                "SELECT format_type(a.atttypid, a.atttypmod) "
+                "FROM pg_attribute a "
+                "WHERE a.attrelid = 'manual_chunks'::regclass "
+                "AND a.attname = 'embedding' AND NOT a.attisdropped"
+            )
+        ).scalar()
+
+        if current_type != target_type:
+            # Drop a legacy/wrong-typed column and its dependent index, then
+            # recreate at the correct vector dimension (repopulated on re-embed).
+            connection.execute(
+                text(f"DROP INDEX IF EXISTS {_EMBEDDING_INDEX}")
+            )
+            connection.execute(
+                text("ALTER TABLE manual_chunks DROP COLUMN IF EXISTS embedding")
+            )
+            connection.execute(
+                text(
+                    f"ALTER TABLE manual_chunks ADD COLUMN embedding {target_type}"
+                )
+            )
+
         connection.execute(
-            text("ALTER TABLE manual_chunks ADD COLUMN IF NOT EXISTS embedding REAL[]")
+            text(
+                f"CREATE INDEX IF NOT EXISTS {_EMBEDDING_INDEX} "
+                "ON manual_chunks "
+                f"USING hnsw ((embedding::halfvec({EMBEDDING_DIM})) halfvec_cosine_ops)"
+            )
         )
 
 

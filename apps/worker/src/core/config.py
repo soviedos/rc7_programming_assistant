@@ -18,7 +18,8 @@ class Settings(BaseSettings):
     worker_manual_timeout_extra_per_mb_seconds: int = 30
     worker_manual_timeout_max_seconds: int = 1800
     gemini_api_key: str = "replace_me"
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.5-flash"
+    gemini_embedding_model: str = "gemini-embedding-2"
     gemini_timeout_seconds: int = 8
     semantic_review_enabled: bool = True
     semantic_review_sample_rate: float = 0.1
