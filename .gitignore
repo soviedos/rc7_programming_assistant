@@ -19,7 +19,13 @@ apps/api/.venv/
 apps/worker/.venv/
 backups/
 migration_export_*/
+
+# Logs (runtime) — keep folder placeholders, ignore everything else
 logs/
+**/logs/*.log
+apps/api/logs/
+*.log
+!logs/**/.gitkeep
 
 # Claude Code local tooling state
 .claude/
