@@ -1,7 +1,7 @@
 # ─── Stage 1: Install dependencies ───────────────────────────────────────────
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY apps/web/package.json ./
+COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci
 
 # ─── Stage 2: Build ───────────────────────────────────────────────────────────
