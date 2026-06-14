@@ -109,14 +109,26 @@ calidad en la segmentación:
 | `completeness_score` | El chunk no está cortado a mitad de una idea (0.0–1.0) |
 | `boundary_quality_score` | Los bordes del chunk coinciden con límites naturales (0.0–1.0) |
 
-**Acciones de autocorrección seguras** (`apply_safe_chunk_autofixes`):
-- `keep` — chunk aceptado sin modificación
-- `merge` — chunk muy corto fusionado con el siguiente
-- `split` — chunk muy largo dividido en mitades iguales
-- `regenerate` — chunk regenerado con prompt de reformulación (no implementado aún; tratado como `keep`)
+**Acciones de autocorrección seguras** (`apply_safe_chunk_autofixes`,
+[jobs/ingestion.py](../../apps/worker/src/jobs/ingestion.py)):
+- `keep` — chunk aceptado sin modificación.
+- `merge_with_next` — chunk fusionado con el siguiente (misma página) cuando
+  `boundary_quality_score ≤ SEMANTIC_REVIEW_MERGE_BOUNDARY_MAX`.
+- `split` — chunk largo dividido en dos cuando `len ≥ SEMANTIC_REVIEW_SPLIT_MIN_CHARS` y
+  `coherence_score ≤ SEMANTIC_REVIEW_SPLIT_MAX_COHERENCE`.
+- `regenerate` — **implementado**: si `coherence_score ≤ SEMANTIC_REVIEW_REGENERATE_MAX_COHERENCE`,
+  el worker llama a Gemini (`GeminiSemanticReviewer.regenerate_chunk`,
+  [semantic_review.py](../../apps/worker/src/services/semantic_review.py)) para **reescribir el
+  texto del chunk** corrigiendo artefactos de extracción (saltos de línea espurios, encabezados
+  o palabras fragmentadas) **sin inventar contenido ni alterar el significado**. El texto corregido
+  se aplica **antes del embedding** (se embebe e indexa la versión reescrita) y la acción se registra
+  en `manual_chunk_reviews`. Es fail-safe: si la reescritura falla o vuelve vacía/igual, se hace `keep`.
 
-Los resultados agregados por manual se almacenan en `manual_review_summaries` y son
-consultables desde la consola de administración en `/api/v1/manuals/review-summaries`.
+Cada `regenerate` es **una llamada Gemini adicional por chunk**, acotada doblemente: solo chunks ya
+revisados (sujetos al tope de revisión) y con coherencia ≤ el umbral.
+
+Los resultados agregados por manual se almacenan en `manual_review_summaries` (incluye
+`regenerate_actions` y `applied_autofixes`) y son consultables en `/api/v1/manuals/review-summaries`.
 
 ### Cobertura de la revisión (variables de entorno del worker)
 
@@ -127,6 +139,8 @@ ni tope. Se controla vía `.env.example` (no hardcoded):
 |---|---|---|
 | `SEMANTIC_REVIEW_SAMPLE_RATE` | `1.0` | Fracción de chunks revisados. `1.0` = todos (sin muestreo) |
 | `SEMANTIC_REVIEW_MAX_REVIEWS_PER_MANUAL` | `0` | Tope de revisiones por manual. `0` desactiva el tope |
+| `SEMANTIC_REVIEW_AUTOFIX_ENABLED` | `true` | Activa merge/split/regenerate tras la revisión |
+| `SEMANTIC_REVIEW_REGENERATE_MAX_COHERENCE` | `0.5` | Solo reescribe (regenerate) si la coherencia es ≤ este valor (control de costo) |
 | `WORKER_MANUAL_TIMEOUT_SECONDS` | `7200` | Timeout base por manual; subido para que revisar todos los chunks no falle |
 | `WORKER_MANUAL_TIMEOUT_MAX_SECONDS` | `21600` | Tope del timeout dinámico (escala con el tamaño del PDF) |
 

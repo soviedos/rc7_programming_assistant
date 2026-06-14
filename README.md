@@ -210,12 +210,15 @@ rc7_programming_assistant/
 │   ├── api/          # Backend FastAPI (Python 3.12)
 │   ├── web/          # Frontend Next.js 16
 │   └── worker/       # Worker de ingestión documental
+├── packages/
+│   └── rc7_shared_db/ # Modelos ORM + Base compartidos (api y worker)
 ├── docs/             # Documentación técnica
-│   ├── architecture/ # Visión general, decisiones tecnológicas
+│   ├── architecture/ # Visión general, decisiones, diagramas Mermaid (ARCHITECTURE.md)
 │   ├── backend/      # Módulos API: endpoints, settings, audit
 │   ├── frontend/     # Layout y criterios de UX
 │   ├── operations/   # Desarrollo local, testing, despliegue
 │   ├── rag/          # Pipeline de ingestión documental
+│   ├── audit/        # Auditoría de código y divergencias doc-vs-código
 │   └── decisions/    # Architecture Decision Records (ADR)
 ├── infra/            # Dockerfiles y configuración de servicios
 ├── logs/             # Logs de api y worker (excluidos del control de versiones)

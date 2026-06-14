@@ -41,6 +41,10 @@ flowchart TB
 `minio`. **Nginx existe solo en producción** (`docker-compose.prod.yml`) como terminador TLS/reverse
 proxy; en desarrollo no hay nginx y el proxy de Next.js cumple ese rol para `/api/v1/*`.
 
+**Dependencia de código compartida (no es un servicio):** `packages/rc7_shared_db/` define una sola
+vez la `Base` ORM, los tipos cross-dialect y los modelos `Manual`/`ManualChunk`/`ManualChunkReview`/
+`ManualReviewSummary`. `api` y `worker` la instalan editable en sus imágenes y la re-exportan.
+
 ---
 
 ## 2. Pipeline de ingestión (worker)
@@ -59,8 +63,8 @@ flowchart TD
     G --> H{"¿manual elegible?\n(idioma ∈ es,en y filtro de título)"}
     H -- No --> K["sin revisiones"]
     H -- Sí --> I["select_chunks_for_semantic_review()\nsample_rate=1.0 ⇒ TODOS\n(too_short / too_long / suspicious_boundary / sampled)"]
-    I --> J["GeminiSemanticReviewer.review_chunk()\n1 llamada REST por chunk\ncoherence/completeness/boundary + action"]
-    J --> L["apply_safe_chunk_autofixes()\nmerge_with_next / split (regenerate ⇒ keep)"]
+    I --> J["GeminiSemanticReviewer.review_chunk()\n1 llamada Gemini (SDK) por chunk\ncoherence/completeness/boundary + action"]
+    J --> L["apply_safe_chunk_autofixes()\nmerge_with_next / split / regenerate\n(regenerate: reescribe el chunk con Gemini → antes del embedding)"]
     K --> L
     L --> M["embed_texts() gemini-embedding-2\n(1 types.Content por chunk, 3072 dims, batch=100)"]
     M --> N["index_manual_chunks(): DELETE previos +\nINSERT manual_chunks (embedding vector(3072))\n+ reviews + review_summary"]
@@ -70,8 +74,9 @@ flowchart TD
 ```
 
 Notas reales: la revisión es **exhaustiva** por defecto (`SEMANTIC_REVIEW_SAMPLE_RATE=1.0`, sin tope);
-el autofix `regenerate` **no** está implementado (se trata como `keep`); el reviewer usa **REST urllib**
-mientras el embedding usa el **SDK** ([CODE_AUDIT S5](../audit/CODE_AUDIT.md)).
+el autofix `regenerate` **sí** está implementado (reescribe el chunk con Gemini, gated por
+`SEMANTIC_REVIEW_REGENERATE_MAX_COHERENCE`, fail-safe a `keep`); tanto la revisión como el embedding
+usan el **SDK `google-genai`**.
 
 ---
 
@@ -360,6 +365,8 @@ erDiagram
     }
 ```
 
-`ROLE_PERMISSIONS`, `SYSTEM_SETTINGS` y `AUDIT_LOG` son tablas independientes (sin FK). El modelo
-`Manual` del worker es un subconjunto del de la API (no declara `sha256`) — ver
-[CODE_AUDIT O2](../audit/CODE_AUDIT.md).
+`MANUALS`, `MANUAL_CHUNKS`, `MANUAL_CHUNK_REVIEWS` y `MANUAL_REVIEW_SUMMARIES` se definen **una sola
+vez** en el paquete compartido `packages/rc7_shared_db/` (Base + tipos cross-dialect incluidos), del
+que dependen API y worker; las demás tablas (`USERS`, `ROLE_PERMISSIONS`, `SYSTEM_SETTINGS`,
+`AUDIT_LOG`, `CHAT_HISTORY`) son propias de la API. `ROLE_PERMISSIONS`, `SYSTEM_SETTINGS` y
+`AUDIT_LOG` no tienen FKs declaradas.

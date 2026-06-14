@@ -39,10 +39,12 @@ Todos los endpoints requieren rol `admin`.
 > al leer el valor. Un valor inválido (ej. `"abc"` para `gemini_temperature`) hará que la
 > lectura falle; el endpoint `PUT` no valida el tipo, solo el formato de string no vacío.
 
-> **Modelos Gemini (no son settings de DB en caliente):** se centralizaron en `config.py`
-> (`gemini_model`, `gemini_embedding_model`), overridables por las variables de entorno
-> `GEMINI_MODEL` / `GEMINI_EMBEDDING_MODEL` (requiere reinicio). El default sembrado de
-> `system_prompt_pac` ya está **alineado** con la trazabilidad por IDs de fuente; las
+> **Modelos Gemini y dimensión (no son settings de DB en caliente):** se centralizaron en
+> `config.py` de API y worker como `gemini_gen_model` (`gemini-3.5-flash`),
+> `gemini_embed_model` (`gemini-embedding-2`) y `gemini_embed_dim` (`3072`), overridables por
+> las variables de entorno `GEMINI_GEN_MODEL` / `GEMINI_EMBED_MODEL` / `GEMINI_EMBED_DIM`
+> (requiere reinicio). `gemini_embed_dim` debe coincidir con la columna `vector(N)`. El default
+> sembrado de `system_prompt_pac` ya está **alineado** con la trazabilidad por IDs de fuente; las
 > instalaciones existentes deben ejecutar `POST /admin/settings/reset` para adoptarlo.
 
 ---

@@ -37,11 +37,21 @@ flexibilidad de microservicios, adecuado para el volumen actual de manuales DENS
 | Coordinación | Polling a PostgreSQL (`status = 'pending'`) con `FOR UPDATE SKIP LOCKED` para reclamar manuales |
 | Resiliencia | Timeout por manual, recuperación automática de manuales atascados en `processing` al reiniciar; límite de 3 crashes consecutivos antes de marcar como `failed` |
 
+### Paquete compartido — `packages/rc7_shared_db/`
+
+Para evitar divergencia, la `Base` declarativa, los tipos cross-dialect
+(`ArrayOfString`, `EmbeddingVector`) y los **modelos ORM compartidos** (`Manual`,
+`ManualChunk`, `ManualChunkReview`, `ManualReviewSummary`) tienen una **única
+definición** en este paquete. `apps/api` y `apps/worker` lo instalan editable (ver
+Dockerfiles) y lo re-exportan vía `src/db/base.py` y `src/db/models/__init__.py`, de
+modo que comparten la misma `MetaData`. Los modelos propios de cada servicio
+(`User`, `AuditLog`, `ChatHistory`, `RolePermission`, `SystemSetting`) viven en la API.
+
 ### PostgreSQL 17 + pgvector
 
 Base de datos transaccional y vectorial única (imagen `pgvector/pgvector:pg17`).
 Tablas principales: `users`, `manuals`, `manual_chunks` (con columna
-`embedding vector(3072)` + índice HNSW sobre cast `halfvec`),
+`embedding vector(3072)` + índice HNSW `manual_chunks_embedding_hnsw` sobre cast `halfvec`),
 `manual_chunk_reviews`, `manual_review_summaries`, `chat_history`,
 `role_permissions`, `system_settings`, `audit_log`.
 
@@ -123,7 +133,9 @@ GeminiSemanticReviewer → revisión de TODOS los chunks (sin muestreo por defec
     acciones: keep | merge | split | regenerate
     │
     ▼
-apply_safe_chunk_autofixes() → aplica correcciones automáticas seguras
+apply_safe_chunk_autofixes() → merge / split / regenerate
+    └─ regenerate: reescribe el chunk con Gemini (corrige artefactos de extracción,
+       sin inventar contenido) ANTES del embedding; fail-safe a keep si falla
     │
     ▼
 embed_texts() → gemini-embedding-2 en lote (un types.Content por chunk, sin task_type)
