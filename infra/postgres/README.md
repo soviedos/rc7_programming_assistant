@@ -16,7 +16,12 @@ Configuración de la base de datos principal del sistema.
 
 ## Extensiones
 
-- **pgvector**: almacenamiento y búsqueda de embeddings vectoriales (pendiente de activación)
+- **pgvector** (activa): almacenamiento y búsqueda de embeddings vectoriales. La imagen es
+  `pgvector/pgvector:pg17`; `init.py` ejecuta `CREATE EXTENSION IF NOT EXISTS vector` al arrancar.
+  La columna `manual_chunks.embedding` es `vector(3072)`, con un índice **HNSW** construido sobre
+  un cast a `halfvec(3072)` (`halfvec_cosine_ops`) — pgvector limita los índices HNSW de `vector`
+  a 2000 dimensiones, por lo que para 3072 se indexa vía `halfvec`. La búsqueda ordena por
+  distancia coseno con el operador `<=>`.
 
 ## Contenido
 

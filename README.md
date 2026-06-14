@@ -17,7 +17,7 @@ flowchart TB
     subgraph DockerStack["🐳 Docker Compose Stack"]
         Nginx["Nginx\n:80 / :443\nSSE: proxy_buffering off\nread_timeout 310s"]
 
-        subgraph FE["apps/web — Next.js 15  ·  :3000"]
+        subgraph FE["apps/web — Next.js 16  ·  :3000"]
             NextJS["App Router · TypeScript · Tailwind\nSSE Consumer · Rutas protegidas por rol\nWorkspace PAC · Consola admin"]
         end
 
@@ -35,7 +35,7 @@ flowchart TB
         end
     end
 
-    Gemini(["☁️ Google Gemini API\ngemini-2.5-flash\ngemini-embedding-001"])
+    Gemini(["☁️ Google Gemini API\ngemini-3.5-flash\ngemini-embedding-2 (3072-dim)"])
 
     Browser -->|HTTPS| Nginx
     Nginx -->|proxy :3000| NextJS
@@ -47,8 +47,12 @@ flowchart TB
     Worker -->|"SELECT FOR UPDATE SKIP LOCKED"| PG
     Worker -->|"download PDF"| MinIO
     Worker -->|"semantic review · embed_content"| Gemini
-    Worker -->|"INSERT manual_chunks\n768-dim embedding vectors"| PG
+    Worker -->|"INSERT manual_chunks\nvector(3072) embeddings"| PG
 ```
+
+> **Nginx solo existe en producción** (`docker-compose.prod.yml`, TLS + reverse proxy).
+> En el compose de **desarrollo** (`docker-compose.yml`) no hay nginx: el browser pega a
+> `web:3000` y el proxy interno de Next.js reenvía `/api/v1/*` a `api:8000`.
 
 ### Pipelines — Ingestión y RAG
 
@@ -61,8 +65,8 @@ flowchart LR
         I3["Worker\nFOR UPDATE SKIP LOCKED\nstatus = processing"]
         I4["pypdf\nextract_pdf_text_by_page()"]
         I5["build_text_chunks()\nchunking semántico"]
-        I6["GeminiSemanticReviewer\nrevisión + autocorrección\ncoherence · completeness · boundary"]
-        I7["gemini-embedding-001\nbatch · 768 dimensiones"]
+        I6["GeminiSemanticReviewer\nrevisión de TODOS los chunks (sin muestreo)\ncoherence · completeness · boundary"]
+        I7["gemini-embedding-2\nbatch · 3072 dimensiones"]
         I8[("manual_chunks\nstatus = indexed")]
 
         I1 --> I2 --> I3 --> I4 --> I5 --> I6 --> I7 --> I8
@@ -72,9 +76,9 @@ flowchart LR
         direction TB
         R1(["Usuario\nprompt + código PAC actual"])
         R2["Fase 1 — HyDE\nGemini · respuesta hipotética\n(sin contexto documental)"]
-        R3["Fase 2 — Retrieval\nembed(prompt + HyDE)\nbúsqueda coseno pgvector  ·  top-k"]
-        R4["Fase 3 — Contexto\nconstrucción con presupuesto de chars\nreference_map por chunk"]
-        R5["Fase 4 — Respuesta final\nGemini + contexto RAG\nJSON: summary · pac_code · references"]
+        R3["Fase 2 — Retrieval\nembed(prompt + HyDE)\npgvector &lt;=&gt; (HNSW halfvec)\nre-rank por hardware + categoría · top-k"]
+        R4["Fase 3 — Contexto\nconstrucción con presupuesto de chars\nsource_map con IDs S1…Sn (trazabilidad)"]
+        R5["Fase 4 — Respuesta final\nGemini + contexto RAG\nJSON: summary · pac_code · references (IDs citados)"]
         R6(["SSE Streaming\nevents: chunk → done\nkeepalive cada 15 s"])
 
         R1 --> R2 --> R3 --> R4 --> R5 --> R6
@@ -204,7 +208,7 @@ rc7_programming_assistant/
 │   └── workflows/    # CI/CD (deploy.yml)
 ├── apps/
 │   ├── api/          # Backend FastAPI (Python 3.12)
-│   ├── web/          # Frontend Next.js 15
+│   ├── web/          # Frontend Next.js 16
 │   └── worker/       # Worker de ingestión documental
 ├── docs/             # Documentación técnica
 │   ├── architecture/ # Visión general, decisiones tecnológicas
@@ -229,7 +233,10 @@ rc7_programming_assistant/
 
 | Documento | Descripción |
 |---|---|
+| [Arquitectura (diagramas Mermaid)](./docs/architecture/ARCHITECTURE.md) | Componentes, ingestión, RAG, vectorial, auth, secuencias y ER |
 | [Arquitectura general](./docs/architecture/overview.md) | Componentes, flujos RAG, audit y settings |
+| [Auditoría de código](./docs/audit/CODE_AUDIT.md) | Hallazgos por severidad, limpiezas y propuestas |
+| [Documentación vs. código](./docs/audit/DOC_VS_CODE.md) | Tabla de divergencias verificadas/corregidas |
 | [Decisiones tecnológicas](./docs/architecture/technology-decisions.md) | ADRs: pgvector, HyDE, SSE, settings en DB |
 | [Módulos del backend](./docs/backend/api-modules.md) | Tabla completa de endpoints |
 | [Módulo settings](./docs/backend/settings-module.md) | Parámetros configurables y su efecto |
@@ -246,13 +253,13 @@ rc7_programming_assistant/
 
 | Capa | Tecnología | Versión mínima |
 |---|---|---|
-| Frontend | Next.js + React + TypeScript | 15 |
+| Frontend | Next.js + React + TypeScript | 16 (`next@16.2.4`, React 19) |
 | Backend | FastAPI + SQLAlchemy + Pydantic v2 | Python 3.12+ |
-| Worker | Python + google-genai SDK + pytesseract + pdf2image | Python 3.12+ |
-| Base de datos | PostgreSQL + pgvector | 17+ |
+| Worker | Python + google-genai SDK + pypdf | Python 3.12+ |
+| Base de datos | PostgreSQL + pgvector (`vector(3072)` · HNSW) | 17+ |
 | Object storage | MinIO (S3-compatible) | — |
 | Contenedores | Docker + Docker Compose | 24.0+ / 2.20+ |
-| IA | Google Gemini 2.5 Flash + gemini-embedding-001 | — |
+| IA | Google Gemini 3.5 Flash + gemini-embedding-2 (3072-dim) | — |
 | Testing | pytest, Vitest | — |
 
 ---

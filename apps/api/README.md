@@ -14,27 +14,24 @@ Backend principal del RC7 Programming Assistant, responsable de la autenticació
 | PyJWT | Firma y verificación de tokens |
 | pwdlib (Argon2) | Hashing de contraseñas |
 | psycopg | Driver PostgreSQL |
+| pgvector | Tipo de columna `Vector(3072)` + distancia coseno (`<=>` / `halfvec`) |
+| google-genai SDK | Pipeline RAG con Gemini (`gemini-3.5-flash`, `gemini-embedding-2`) |
 | MinIO | Almacenamiento de manuales PDF |
 
 ---
 
 ## Responsabilidades implementadas
 
-- Autenticación con correo y contraseña
-- Sesión por cookie HttpOnly con JWT firmado
-- Cambio de rol activo (admin ↔ user)
-- Bootstrap del administrador por variables de entorno
-- Contratos base para chat y administración
-- Registro y carga inicial de manuales PDF a MinIO
+- Autenticación con correo y contraseña, sesión por cookie HttpOnly con JWT firmado
+- Cambio de rol activo (admin ↔ user) y bootstrap del administrador
+- Pipeline RAG de 4 fases con HyDE y streaming SSE
+- Retrieval con pgvector: distancia coseno `<=>` (HNSW) + re-rank por compatibilidad de
+  hardware del robot y categoría; trazabilidad de fuentes con IDs `S1…Sn`
+- CRUD administrativo de usuarios y permisos por rol
+- Configuración administrativa persistente (`system_settings`, en caliente)
+- Auditoría de acciones operativas (`audit_log`)
+- Registro y carga de manuales PDF a MinIO + trigger de ingestión
 - Healthcheck para orquestación Docker
-
-## Responsabilidades planificadas
-
-- CRUD administrativo de usuarios
-- Integración con Google Gemini
-- Retrieval sobre manuales indexados con pgvector
-- Configuración administrativa persistente
-- Auditoría de acciones operativas
 
 ---
 
@@ -64,4 +61,5 @@ Backend principal del RC7 Programming Assistant, responsable de la autenticació
 docker compose exec api python -m pytest
 ```
 
-Las pruebas utilizan SQLite en memoria con overrides de dependencias de FastAPI.
+Las pruebas corren contra una base PostgreSQL dedicada `rc7_test` (auto-creada por el
+fixture de conftest, con la extensión `vector` habilitada) y overrides de dependencias de FastAPI.

@@ -6,7 +6,7 @@ Resumen de tecnologías seleccionadas y decisiones de arquitectura (ADRs) del pr
 
 ## Stack base
 
-### Frontend — Next.js 14
+### Frontend — Next.js 16
 
 | Criterio | Detalle |
 |---|---|
@@ -32,13 +32,13 @@ Resumen de tecnologías seleccionadas y decisiones de arquitectura (ADRs) del pr
 | **Coordinación** | Polling a PostgreSQL con `SELECT ... FOR UPDATE SKIP LOCKED` — sin broker externo |
 | **Resiliencia** | Timeout por manual, recuperación de estados `processing` al reiniciar |
 
-### Base de datos — PostgreSQL 15 + pgvector
+### Base de datos — PostgreSQL 17 + pgvector
 
 | Criterio | Detalle |
 |---|---|
 | **Unificación** | Datos transaccionales y vectores en una sola instancia |
 | **Sin complejidad extra** | No se requiere un vector DB dedicado al volumen actual |
-| **Extensión pgvector** | Columna `embedding REAL[]` + búsqueda coseno directamente en SQL |
+| **Extensión pgvector** | Columna `embedding vector(3072)` + búsqueda coseno (`<=>`) con índice HNSW directamente en SQL |
 
 ### Object storage — MinIO
 
@@ -55,8 +55,8 @@ Resumen de tecnologías seleccionadas y decisiones de arquitectura (ADRs) del pr
 
 **Contexto:** El sistema necesita almacenamiento y búsqueda de embeddings para el pipeline RAG.
 
-**Decisión:** Usar la extensión pgvector sobre PostgreSQL 15 en lugar de una base de datos
-vectorial dedicada (Pinecone, Weaviate, Qdrant, etc.).
+**Decisión:** Usar la extensión pgvector sobre PostgreSQL 17 (imagen `pgvector/pgvector:pg17`)
+en lugar de una base de datos vectorial dedicada (Pinecone, Weaviate, Qdrant, etc.).
 
 **Razonamiento:**
 - El volumen inicial de manuales DENSO RC7 es pequeño (decenas de documentos).
@@ -65,8 +65,12 @@ vectorial dedicada (Pinecone, Weaviate, Qdrant, etc.).
 - La migración a un vector DB dedicado es posible si el volumen crece, sin cambios de esquema
   en las tablas transaccionales.
 
-**Consecuencias:** La búsqueda vectorial escala linealmente con el número de chunks. Se aplica
-un `LIMIT 5000` en el scan para proteger memoria. Un índice HNSW puede añadirse si el volumen lo requiere.
+**Consecuencias:** La columna es `vector(3072)` y la búsqueda ordena en Postgres con el operador
+de distancia coseno `<=>`, acelerada por un índice **HNSW**. Como pgvector limita los índices HNSW
+sobre `vector` a 2000 dimensiones, el índice se construye sobre un cast a `halfvec(3072)`
+(`hnsw ((embedding::halfvec(3072)) halfvec_cosine_ops)`) y la consulta castea ambos lados a
+`halfvec` para usarlo. Se reemplazó el cálculo de coseno en Python sobre un `LIMIT 5000`: ahora se
+recupera un pool top-50 por distancia y se re-rankea en memoria (ver ADR-006).
 
 ---
 
@@ -145,3 +149,49 @@ logger Python (`_logger.error()`), nunca re-lanza.
 
 **Consecuencias:** En caso de fallo del audit log, el evento se pierde silenciosamente (solo
 queda en el log del proceso). No hay reintentos ni cola de eventos.
+
+---
+
+### ADR-006 — Re-ranking por compatibilidad de hardware en el retrieval
+
+**Contexto:** Los manuales DENSO cubren distintos modelos de robot y versiones de controlador.
+La similitud coseno por sí sola puede priorizar un chunk muy parecido textualmente pero referido
+a un hardware distinto al del usuario.
+
+**Decisión:** Tras recuperar el pool top-50 por distancia coseno en pgvector, re-rankear en Python
+con la fórmula `score = cosine_similarity · hardware_factor · category_factor`, donde
+`hardware_factor` compara el metadato del manual (`robot_model`, `controller_version`) contra la
+configuración del `ChatRequest` (`robot_type`, `controller`).
+
+**Razonamiento:**
+- Prioriza/limita contenido del hardware correcto sin necesidad de un filtro duro en SQL.
+- El re-rank en memoria sobre 50 candidatos es despreciable en costo.
+- Un match aplica boost (×1.30 modelo / ×1.15 controlador); un valor presente pero distinto aplica
+  penalización suave (×0.70 / ×0.85); la **ausencia de metadato es neutral (×1.0)**, de modo que
+  los chunks sin configuración nunca se degradan.
+
+**Consecuencias:** Los chunks incompatibles se *demoten* en vez de excluirse, así el contexto nunca
+queda vacío si ningún manual coincide exactamente. El controlador se compara a nivel de familia
+(prefijo) porque el payload sólo expone la familia, mientras `controller_version` lleva el firmware.
+
+---
+
+### ADR-007 — Migración del espacio de embeddings a gemini-embedding-2 (3072-dim)
+
+**Contexto:** El proyecto usaba `gemini-embedding-001` (768 dims). Se migró el modelo de
+generación a `gemini-3.5-flash` y el de embeddings a `gemini-embedding-2` (3072 dims).
+
+**Decisión:** Adoptar `gemini-embedding-2` con `output_dimensionality=3072`, ajustar la columna a
+`vector(3072)` y **re-embeber todo el corpus**, ya que los espacios de `gemini-embedding-001` y
+`gemini-embedding-2` son incompatibles (no se pueden comparar vectores entre modelos).
+
+**Razonamiento:**
+- `gemini-embedding-2` no admite `task_type`: para documentos se envuelve cada chunk en su propio
+  `types.Content` con prefijo `"title: none | text: …"` (un embedding por chunk en vez de uno
+  agregado); para la query se prefija `"task: search result | query: …"`.
+- La dimensión 3072 está centralizada y debe coincidir en API (`_EMBED_DIM`), worker
+  (`_OUTPUT_DIMENSIONALITY`) y el modelo (`Vector(3072)`).
+
+**Consecuencias:** Al cambiar de modelo hay que invalidar (`embedding = NULL`) y re-embeber el
+corpus completo (`python -m scripts.reembed_chunks`). La migración de esquema en `init.py` hace
+DROP + ADD de la columna (idempotente) porque los datos se repueblan por re-embedding.

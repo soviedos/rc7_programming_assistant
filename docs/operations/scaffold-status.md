@@ -12,10 +12,10 @@ Resumen del progreso de implementación del RC7 Programming Assistant.
 | **Gestión de roles** | Cambio de rol activo entre `admin` y `user` |
 | **Bootstrap admin** | Creación automática del administrador inicial por variables de entorno |
 | **Manuales** | Registro administrativo de PDFs, carga a MinIO y metadatos persistidos |
-| **Ingestión documental** | El worker procesa manuales pendientes: extrae texto con pypdf, genera chunks semánticos, revisión y autocorrección con Gemini, genera embeddings con `gemini-embedding-001` e indexa en pgvector. Límite de 3 reinicios automáticos tras crash del worker (`_MAX_CRASH_RETRIES = 3`). |
+| **Ingestión documental** | El worker procesa manuales pendientes: extrae texto con pypdf, genera chunks semánticos, revisión y autocorrección con Gemini de **todos los chunks** (sin muestreo por defecto), genera embeddings con `gemini-embedding-2` (3072-dim) e indexa en pgvector (`vector(3072)` + HNSW). Límite de 3 reinicios automáticos tras crash del worker (`_MAX_CRASH_RETRIES = 3`). |
 | **Cancelación de manuales** | `POST /api/v1/manuals/{id}/cancel` permite al administrador detener un manual en estado `pending` o `processing`. Elimina los chunks parciales y marca el manual como `failed`. Disponible desde el panel de administración con el botón "Detener". |
 | **CRUD administrativo** | Creación, edición y desactivación de usuarios y gestión de permisos por rol desde la consola |
-| **Retrieval RAG** | Búsqueda vectorial con pgvector; similitud coseno con boost por categoría; top-6 chunks con presupuesto de 12 000 caracteres |
+| **Retrieval RAG** | Búsqueda vectorial con pgvector (distancia coseno `<=>` + índice HNSW sobre cast `halfvec`); pool top-50 re-rankeado por `similitud · compatibilidad de hardware · categoría`; top-6 chunks con presupuesto de 12 000 caracteres. Trazabilidad de fuentes con IDs `S1…Sn` y comentarios `' fuente: SX` en el código PAC. |
 | **Integración Gemini** | Pipeline RAG de 4 fases con HyDE: respuesta hipotética → embedding + retrieval → contexto → respuesta final con JSON estructurado |
 | **Generación de código PAC** | Genera programa principal + archivos `dio_tab.h` y `var_tab.h` como un bloque único; las macros reflejan el perfil I/O del robot configurado |
 | **Frontend** | Login profesional con identidad RobLab/CENFOTEC, tema oscuro unificado, workspace del asistente, consola de manuales con extracción automática de metadatos, panel de configuración de perfil |

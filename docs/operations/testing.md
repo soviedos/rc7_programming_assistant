@@ -21,6 +21,8 @@ Todas las suites se ejecutan dentro de Docker usando `docker compose exec ...`.
 | Autenticación | Login, sesión actual, cambio de rol, logout |
 | Rutas base | Root (`/`), healthcheck |
 | Chat streaming | Pipeline RAG completo con SSE, errores y autenticación |
+| Chat retrieval | Búsqueda vectorial pgvector (`<=>`), re-rank por categoría y por **compatibilidad de hardware** (`test_chat_retrieval.py`) |
+| Chat trazabilidad | Resolución de IDs de fuente `S1…Sn`, descarte de IDs alucinados, prompt de trazabilidad (`test_chat_traceability.py`) |
 | Utilidades | Hashing de passwords, validación de roles, generación de tokens |
 | Admin usuarios | CRUD, permisos por rol, validación de restricciones |
 | Manuales | Carga, listado, eliminación, retry, cancelación |
@@ -28,7 +30,9 @@ Todas las suites se ejecutan dentro de Docker usando `docker compose exec ...`.
 | Profile | Lectura/escritura de perfil, cambio de contraseña |
 | Settings | CRUD completo de parámetros del sistema |
 
-**Entorno de pruebas**: SQLite en memoria con overrides de dependencias de FastAPI.
+**Entorno de pruebas**: base PostgreSQL dedicada `rc7_test`, auto-creada por el fixture de
+conftest con la extensión `vector` habilitada (necesaria para la columna `vector(3072)`), más
+overrides de dependencias de FastAPI.
 
 **Helpers compartidos**: `apps/api/tests/helpers.py` contiene `create_user()` y `login()` usados por todos los módulos de prueba para evitar duplicación.
 
@@ -74,6 +78,9 @@ docker compose exec web npm test
 | Logging | Configuración base del sistema de logs |
 | Ingestión | Ciclo completo de ingestión con chunking, manejo de fallos y heartbeat |
 | Chunking | Segmentación de texto por tamaño máximo |
+| Revisión semántica | Selección de chunks, elegibilidad por idioma/título, métricas agregadas |
+
+**Entorno de pruebas**: SQLite por test (el tipo `EmbeddingVector` cae a JSON fuera de PostgreSQL).
 
 ```bash
 docker compose exec worker python -m pytest

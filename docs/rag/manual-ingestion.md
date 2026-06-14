@@ -33,7 +33,7 @@ Admin → POST /api/v1/manuals/
              │
              ▼
     [Etapa 3] Revisión semántica con Gemini
-    GeminiSemanticReviewer (muestra configurable del total de chunks)
+    GeminiSemanticReviewer (TODOS los chunks — sin muestreo por defecto)
     ├─ Evalúa: coherence_score, completeness_score, boundary_quality_score
     ├─ Acción por chunk: keep | merge | split | regenerate
     └─ apply_safe_chunk_autofixes(): aplica correcciones automáticas seguras
@@ -42,13 +42,14 @@ Admin → POST /api/v1/manuals/
              ▼
     [Etapa 4] Embedding
     embed_texts()
-    ├─ Modelo: gemini-embedding-001 (768 dimensiones)
-    ├─ task_type: RETRIEVAL_DOCUMENT
+    ├─ Modelo: gemini-embedding-2 (3072 dimensiones)
+    ├─ Sin task_type: cada chunk se envuelve en su propio types.Content
+    │   con prefijo "title: none | text: …" (un embedding por chunk)
     ├─ Procesado en lote (batch)
     └─ Timeout por lote configurable
              │
              ▼
-    INSERT manual_chunks (texto + embedding REAL[] + página)
+    INSERT manual_chunks (texto + embedding vector(3072) + página)
     UPDATE manual (status=indexed)  ←── estado final exitoso
              │
              ▼
@@ -98,8 +99,9 @@ Ver [docs/backend/settings-module.md](../backend/settings-module.md) para la tab
 
 ## Revisión semántica — detalles
 
-La revisión semántica (`GeminiSemanticReviewer`) evalúa una muestra de los chunks generados
-con Gemini para detectar problemas de calidad en la segmentación:
+La revisión semántica (`GeminiSemanticReviewer`) evalúa **todos los chunks generados**
+(con la configuración por defecto, sin muestreo) con Gemini para detectar problemas de
+calidad en la segmentación:
 
 | Métrica | Descripción |
 |---|---|
@@ -116,18 +118,61 @@ con Gemini para detectar problemas de calidad en la segmentación:
 Los resultados agregados por manual se almacenan en `manual_review_summaries` y son
 consultables desde la consola de administración en `/api/v1/manuals/review-summaries`.
 
+### Cobertura de la revisión (variables de entorno del worker)
+
+Por defecto el worker inspecciona **todos** los chunks de cada manual elegible, sin muestreo
+ni tope. Se controla vía `.env.example` (no hardcoded):
+
+| Variable | Valor por defecto | Efecto |
+|---|---|---|
+| `SEMANTIC_REVIEW_SAMPLE_RATE` | `1.0` | Fracción de chunks revisados. `1.0` = todos (sin muestreo) |
+| `SEMANTIC_REVIEW_MAX_REVIEWS_PER_MANUAL` | `0` | Tope de revisiones por manual. `0` desactiva el tope |
+| `WORKER_MANUAL_TIMEOUT_SECONDS` | `7200` | Timeout base por manual; subido para que revisar todos los chunks no falle |
+| `WORKER_MANUAL_TIMEOUT_MAX_SECONDS` | `21600` | Tope del timeout dinámico (escala con el tamaño del PDF) |
+
+> Revisar todos los chunks implica **una llamada a Gemini por chunk**: mucho más lento y costoso
+> que el muestreo. Sólo aplica a nuevas ingestiones o reintentos; los manuales ya indexados no se
+> re-revisan hasta reprocesarlos. Para reducir costo, bajar `SEMANTIC_REVIEW_SAMPLE_RATE` o fijar
+> un tope con `SEMANTIC_REVIEW_MAX_REVIEWS_PER_MANUAL`.
+
 ---
 
 ## Retrieval — pipeline RAG (Fase 2)
 
 Durante el chat, la búsqueda de chunks utiliza:
 
-1. **Embedding de la consulta + respuesta hipotética HyDE** (768 dims, task_type=RETRIEVAL_QUERY)
-2. **Búsqueda coseno** sobre `manual_chunks` (solo manuales con `status=indexed`)
-3. **Boost por categoría:** los manuales de programación (`programming`) reciben un multiplicador
-   de similitud adicional (×1.30) para priorizar contenido relevante
-4. **Top-k** seleccionado según `rag_top_k_chunks` (configurable)
-5. **Budget:** chunks incluidos hasta agotar `rag_context_budget_chars` (configurable)
+1. **Embedding de la consulta + respuesta hipotética HyDE** (`gemini-embedding-2`, 3072 dims).
+   `gemini-embedding-2` no admite `task_type`; en su lugar la query se prefija con
+   `"task: search result | query: …"`.
+2. **Búsqueda vectorial en pgvector** con el operador de distancia coseno `<=>` sobre
+   `manual_chunks` (solo manuales con `status=indexed`). Acelerada por un índice **HNSW**
+   construido sobre un cast a `halfvec(3072)` (pgvector limita los índices HNSW de `vector`
+   a 2000 dims). Se recupera un pool amplio de candidatos (top-50) ordenado por distancia.
+3. **Re-ranking en Python** del pool con la fórmula de scoring:
+
+   ```text
+   score(chunk) = cosine_similarity · hardware_factor · category_factor
+   ```
+
+   - `cosine_similarity = 1 − (embedding <=> query)`.
+   - `hardware_factor = robot_factor · controller_factor` — prioriza chunks cuyo manual
+     coincide con la configuración del robot del usuario (`ChatRequest`): modelo
+     (`robot_model` vs `robot_type`) y controlador/firmware (`controller_version` vs
+     `controller`). Match → boost (×1.30 / ×1.15); presente pero distinto → penalización
+     suave (×0.70 / ×0.85); **sin metadato → neutral (×1.0), nunca degrada**.
+   - `category_factor` — boost secundario por categoría documental (p. ej. `programming` ×1.30).
+4. **Top-k** seleccionado según `rag_top_k_chunks` (configurable). Los chunks incompatibles se
+   *demoten* en vez de filtrarse, así el contexto nunca queda vacío si ningún manual coincide
+   exactamente con el hardware.
+5. **Budget:** chunks incluidos hasta agotar `rag_context_budget_chars` (configurable).
+
+### Trazabilidad de fuentes
+
+En Fase 3 cada fragmento de contexto se etiqueta con un ID estable (`S1`, `S2`, …) y se
+construye un `source_map` `ID → (manual, página)`. El system prompt exige que cada instrucción
+o bloque PAC generado lleve un comentario de fuente (`' fuente: S2`, válido en PAC por el
+apóstrofo) y que el campo `references` liste solo los IDs realmente usados. `_resolve_references`
+descarta IDs alucinados y, si no hay ninguno válido, cae al conjunto recuperado completo.
 
 ---
 

@@ -14,6 +14,10 @@ Documentación técnica del RC7 Programming Assistant, organizada por dominio pa
 | [`rag/`](./rag/) | Pipeline de ingestión documental y estrategia de retrieval |
 | [`operations/`](./operations/) | Desarrollo local, testing y estado del proyecto |
 | [`decisions/`](./decisions/) | Architecture Decision Records (ADR) |
+| [`audit/`](./audit/) | Auditoría de código ([CODE_AUDIT](./audit/CODE_AUDIT.md)) y divergencias doc-vs-código ([DOC_VS_CODE](./audit/DOC_VS_CODE.md)) |
+
+> **Diagramas de arquitectura (Mermaid):** [`architecture/ARCHITECTURE.md`](./architecture/ARCHITECTURE.md)
+> — componentes, ingestión, RAG, almacenamiento vectorial, auth/auditoría, secuencias y modelo ER.
 
 ---
 

@@ -14,7 +14,7 @@ flexibilidad de microservicios, adecuado para el volumen actual de manuales DENS
 
 | Aspecto | Detalle |
 |---|---|
-| Tecnología | Next.js 14 App Router + TypeScript + Tailwind CSS |
+| Tecnología | Next.js 16 App Router + TypeScript + Tailwind CSS (`next@16.2.4`, React 19) |
 | Puerto | 3000 |
 | Responsabilidades | Login, rutas protegidas, workspace del asistente PAC, consola administrativa, cambio de rol, consumidor SSE |
 | Proxy API | Todas las llamadas a `/api/v1/*` pasan por el proxy interno de Next.js → `INTERNAL_API_URL=http://api:8000` |
@@ -32,15 +32,16 @@ flexibilidad de microservicios, adecuado para el volumen actual de manuales DENS
 
 | Aspecto | Detalle |
 |---|---|
-| Tecnología | Python 3.12 + google-genai SDK + pypdf + pytesseract + pdf2image + SQLAlchemy |
-| Responsabilidades | Ingestión documental: parsing pypdf (con fallback OCR para PDFs escaneados) → chunking semántico → revisión Gemini → embeddings → pgvector |
+| Tecnología | Python 3.12 + google-genai SDK + pypdf + SQLAlchemy |
+| Responsabilidades | Ingestión documental: parsing pypdf → chunking semántico → revisión Gemini (todos los chunks) → embeddings → pgvector |
 | Coordinación | Polling a PostgreSQL (`status = 'pending'`) con `FOR UPDATE SKIP LOCKED` para reclamar manuales |
 | Resiliencia | Timeout por manual, recuperación automática de manuales atascados en `processing` al reiniciar; límite de 3 crashes consecutivos antes de marcar como `failed` |
 
-### PostgreSQL 15 + pgvector
+### PostgreSQL 17 + pgvector
 
-Base de datos transaccional y vectorial única. Tablas principales:
-`users`, `manuals`, `manual_chunks` (con columna `embedding REAL[]`),
+Base de datos transaccional y vectorial única (imagen `pgvector/pgvector:pg17`).
+Tablas principales: `users`, `manuals`, `manual_chunks` (con columna
+`embedding vector(3072)` + índice HNSW sobre cast `halfvec`),
 `manual_chunk_reviews`, `manual_review_summaries`, `chat_history`,
 `role_permissions`, `system_settings`, `audit_log`.
 
@@ -49,10 +50,14 @@ Base de datos transaccional y vectorial única. Tablas principales:
 Almacenamiento de objetos compatible con S3 para PDFs originales. El worker descarga
 desde MinIO al procesar; la API sube y sirve archivos.
 
-### Nginx
+### Nginx — **solo producción**
 
-Reverse proxy. Configuración especial para rutas SSE (`/api/v1/chat/`):
-`proxy_buffering off`, `proxy_read_timeout 310s`, `X-Accel-Buffering: no`.
+Nginx existe únicamente en `docker-compose.prod.yml` (imagen `nginx:1.27-alpine`), como
+terminador TLS y reverse proxy. **El compose de desarrollo no incluye nginx**: el browser pega
+directo a `web:3000` y el proxy interno de Next.js
+([route.ts](../../apps/web/src/app/api/v1/[...path]/route.ts)) reenvía `/api/v1/*` a `api:8000`.
+En producción nginx aplica config especial para SSE (`proxy_buffering off`,
+`proxy_read_timeout`, `X-Accel-Buffering: no`).
 
 ---
 
@@ -77,11 +82,12 @@ Reverse proxy. Configuración especial para rutas SSE (`/api/v1/chat/`):
 4. Worker descarga el PDF, extrae texto con pypdf
 5. Chunking semántico respetando estructura del documento
 6. Gemini revisa y autocorrige cada chunk
-7. Chunks vectorizados con gemini-embedding-001 (768 dim) → pgvector
+7. Chunks vectorizados con gemini-embedding-2 (3072 dim) → pgvector `vector(3072)`
 8. Usuario envía consulta + configuración del robot (modelo, controlador, versión)
 9. Fase 1 (HyDE): Gemini genera respuesta hipotética sin contexto documental
-10. Embedding de (consulta + respuesta hipotética) → búsqueda vectorial pgvector
-11. Fase 2 (Retrieval): top-k chunks por similitud coseno con boost por categoría
+10. Embedding de (consulta + respuesta hipotética) → búsqueda vectorial pgvector (`<=>`, HNSW)
+11. Fase 2 (Retrieval): pool top-50 por distancia coseno, re-rankeado por
+    `similitud · compatibilidad de hardware · categoría` → top-k
     (top-k configurable vía módulo settings, default: 6)
 12. Fase 3 (Contexto): construcción del contexto con presupuesto de caracteres
     (configurable vía módulo settings, default: 12 000 chars)
@@ -106,15 +112,13 @@ Worker polling (intervalo configurable)
     │
     ▼
 pypdf → extract_pdf_text_by_page()
-    ├─ Si ≥20 % de páginas tienen texto: extrae directamente
-    └─ Si <20 % de páginas tienen texto (PDF escaneado):
-       OCR página a página con pytesseract + pdf2image (DPI 150, spa+eng)
+    └─ Extrae texto por página directamente con pypdf
     │
     ▼
 build_text_chunks() → chunking semántico respetando párrafos
     │
     ▼
-GeminiSemanticReviewer → revisión por muestra (configurable):
+GeminiSemanticReviewer → revisión de TODOS los chunks (sin muestreo por defecto):
     coherence_score, completeness_score, boundary_quality_score
     acciones: keep | merge | split | regenerate
     │
@@ -122,10 +126,10 @@ GeminiSemanticReviewer → revisión por muestra (configurable):
 apply_safe_chunk_autofixes() → aplica correcciones automáticas seguras
     │
     ▼
-embed_texts() → gemini-embedding-001 en lote (task_type=RETRIEVAL_DOCUMENT)
+embed_texts() → gemini-embedding-2 en lote (un types.Content por chunk, sin task_type)
     │
     ▼
-INSERT manual_chunks con embedding REAL[]
+INSERT manual_chunks con embedding vector(3072)
     │ status=indexed / failed
     ▼
 Listo para retrieval en próximas consultas de chat

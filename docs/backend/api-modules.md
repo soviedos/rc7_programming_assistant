@@ -1,138 +1,142 @@
 # Módulos del Backend — Referencia de Endpoints
 
-Todos los endpoints están bajo el prefijo `/api/v1`.
-La autenticación se realiza mediante cookie HttpOnly (`rc7_session`) con JWT firmado.
+Todos los endpoints están bajo el prefijo `/api/v1` (montado en
+[main.py](../../apps/api/src/main.py) → [router.py](../../apps/api/src/api/v1/router.py)).
+La autenticación es por **cookie HttpOnly `rc7_session`** con JWT firmado (HS256).
 
-**Roles:**
-- `user` — usuario estándar
-- `admin` — acceso completo a las rutas de administración
-- `*` — cualquier usuario autenticado
+**Auth requerida:**
+- `No` — endpoint público.
+- `*` — cualquier sesión válida (`get_current_user`, 401 si no hay cookie válida).
+- `admin` — sesión con **rol activo** admin (`get_current_admin_user`, 403 si el rol activo no es admin).
 
----
-
-## Health — `/api/v1/health`
-
-| Método | Ruta | Auth | Descripción |
-|---|---|---|---|
-| `GET` | `/api/v1/health/` | No | Estado del servicio + timestamp + versión |
+> El frontend nunca llama al API directamente: pega a `/api/v1/*` en su propio origen y el
+> proxy de Next.js ([route.ts](../../apps/web/src/app/api/v1/[...path]/route.ts)) reenvía a
+> `INTERNAL_API_URL` (`http://api:8000`) propagando la cookie de sesión.
 
 ---
 
-## Auth — `/api/v1/auth`
+## Health — `/api/v1/health` · [health.py](../../apps/api/src/api/v1/routes/health.py)
 
-| Método | Ruta | Auth | Descripción |
+| Método | Ruta | Auth | Respuesta |
 |---|---|---|---|
-| `POST` | `/api/v1/auth/login` | No | Login con email y contraseña; emite cookie HttpOnly JWT |
-| `POST` | `/api/v1/auth/logout` | `*` | Cierra sesión; elimina la cookie |
-| `GET` | `/api/v1/auth/me` | `*` | Devuelve el perfil del usuario autenticado |
-| `POST` | `/api/v1/auth/switch-role` | `*` | Cambia el rol activo; renueva la cookie JWT |
+| `GET` | `/api/v1/health/` | No | `{"status": "ok"}` (sin timestamp ni versión) |
 
 ---
 
-## Profile — `/api/v1/profile`
+## Auth — `/api/v1/auth` · [auth.py](../../apps/api/src/api/v1/routes/auth.py)
 
-| Método | Ruta | Auth | Descripción |
+| Método | Ruta | Auth | Descripción · errores |
 |---|---|---|---|
-| `GET` | `/api/v1/profile/` | `*` | Perfil del usuario autenticado |
-| `PUT` | `/api/v1/profile/` | `*` | Actualiza nombre y/o email |
-| `PUT` | `/api/v1/profile/password` | `*` | Cambia la contraseña (requiere contraseña actual) |
+| `GET` | `/auth/providers` | No | Lista de proveedores: `["google"]` con nota de que el SSO **no está implementado** aún. |
+| `POST` | `/auth/login` | No | Login email+password → `SessionResponse` y `Set-Cookie`. **401** si credenciales inválidas o usuario inactivo (audita `AUTH_FAILED`). Audita `AUTH_LOGIN` en éxito. |
+| `GET` | `/auth/me` | `*` | `SessionResponse` del usuario y rol activo. |
+| `POST` | `/auth/switch-role` | `*` | Cambia el rol activo y renueva la cookie. **403** si el usuario no tiene ese rol. |
+| `POST` | `/auth/logout` | `*` (best-effort) | Borra la cookie; siempre `200`. Audita `AUTH_LOGOUT` si había sesión. |
+
+`SessionResponse`: `{ email, display_name, role, available_roles[] }`.
 
 ---
 
-## Chat — `/api/v1/chat`
+## Profile — `/api/v1/profile` · [profile.py](../../apps/api/src/api/v1/routes/profile.py)
+
+| Método | Ruta | Auth | Descripción · errores |
+|---|---|---|---|
+| `GET` | `/profile/` | `*` | `{ email, display_name, settings }`. |
+| `PUT` | `/profile/` | `*` | Actualiza **`display_name` y `settings`** (el email **no** se cambia). Renueva la cookie. |
+| `POST` | `/profile/password` | `*` | Cambia contraseña. **400** si la actual es incorrecta, si la nueva es igual a la actual, o si no cumple las reglas (8-16 chars, mayúscula, minúscula, dígito, símbolo). |
+
+> Nota: el endpoint de contraseña es **`POST`** (no `PUT`).
+
+---
+
+## Chat — `/api/v1/chat` · [chat.py](../../apps/api/src/api/v1/routes/chat.py)
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| `POST` | `/api/v1/chat/generate` | `*` | **[SSE]** Ejecuta el pipeline RAG de 4 fases (HyDE → embed → retrieve → stream) y transmite la respuesta como Server-Sent Events. Las fases 1-3 son compartidas entre el modo síncrono y el streaming mediante `_run_rag_phases()`. |
-| `GET` | `/api/v1/chat/history` | `*` | Lista el historial de chat del usuario (paginado) |
-| `DELETE` | `/api/v1/chat/history/{id}` | `*` | Elimina una entrada específica del historial |
+| `POST` | `/chat/generate` | `*` | Ejecuta el pipeline RAG de 4 fases y responde **SSE** (`text/event-stream`). Con `ENABLE_STREAMING=false` corre síncrono y emite un único evento `done` (**503** si el pipeline falla en ese modo). |
+| `GET` | `/chat/history?limit=&offset=` | `*` | Historial del usuario, paginado (`limit` default 50). |
+| `DELETE` | `/chat/history/{item_id}` | `*` | Borra una entrada propia. **404** si no existe o no es del usuario. `204`. |
 
-### Protocolo SSE — `POST /api/v1/chat/generate`
+**Request `POST /chat/generate`** (`ChatRequest`, [schemas/chat.py](../../apps/api/src/api/v1/schemas/chat.py)):
+`prompt` (req), `robot_type`, `controller`, `io_profile`, `payload_kg`, `tool_number`,
+`max_speed_pct`, `hand_type`, `install_type`, `has_io_expansion`, `expansion_io_inputs`,
+`expansion_io_outputs`, `current_code`.
 
-**Request body:**
-```json
-{
-  "prompt": "¿Cómo muevo el brazo a una posición absoluta?",
-  "robot_type": "VP-6242G",
-  "controller": "RC7",
-  "io_profile": "default",
-  "payload_kg": 2.0,
-  "tool_number": 1
-}
+**Eventos SSE:**
 ```
-
-**Eventos SSE emitidos:**
+data: {"type":"chunk","content":"<texto parcial del JSON>"}
+data: {"type":"done","summary":"...","pac_code":"MOVE P,P1  ' fuente: S1","references":[{"title":"...","page":"42"}]}
+data: {"type":"error","message":"Pipeline fallido"}     ← si falla a mitad del stream
 ```
-data: {"type": "chunk", "content": "Puedes usar..."}
-data: {"type": "chunk", "content": " la instrucción MOVE..."}
-...
-data: {"type": "done", "summary": "...", "pac_code": "MOVE P1,S=50", "references": [{"title": "...", "page": 42}]}
-```
-
-**Evento de error:**
-```
-data: {"type": "error", "message": "Pipeline fallido"}
-```
+Tras `done`, el endpoint persiste la entrada de historial (podando a `history_max_entries`) y
+audita `CHAT_QUERY` (best-effort; nunca rompe la respuesta).
 
 ---
 
-## Manuals — `/api/v1/manuals`
+## Manuals — `/api/v1/manuals` · [manuals.py](../../apps/api/src/api/v1/routes/manuals.py)
 
-| Método | Ruta | Auth | Descripción |
-|---|---|---|---|
-| `GET` | `/api/v1/manuals/` | `*` | Lista todos los manuales con estado de ingestión |
-| `GET` | `/api/v1/manuals/review-summaries` | `admin` | Lista resúmenes de revisión semántica de chunks |
-| `GET` | `/api/v1/manuals/{manual_id}` | `*` | Detalle de un manual específico |
-| `GET` | `/api/v1/manuals/{manual_id}/file` | `admin` | Descarga el PDF original desde MinIO |
-| `POST` | `/api/v1/manuals/` | `admin` | Sube un PDF; crea registro y dispara ingestión en el worker |
-| `PUT` | `/api/v1/manuals/{manual_id}` | `admin` | Actualiza metadatos (título, categoría, descripción) |
-| `POST` | `/api/v1/manuals/{manual_id}/retry` | `admin` | Reintenta la ingestión de un manual fallido |
-| `POST` | `/api/v1/manuals/{manual_id}/cancel` | `admin` | Cancela un manual en estado `pending` o `processing`; elimina sus chunks y marca como `failed` |
-| `POST` | `/api/v1/manuals/cleanup-stale-processing` | `admin` | Libera manuales atascados en estado `processing` |
-| `DELETE` | `/api/v1/manuals/{manual_id}` | `admin` | Elimina manual, chunks, embeddings y archivo en MinIO |
+> **Todas** las rutas de manuales requieren **`admin`**.
 
-**Estados de ingestión:** `pending` → `processing` → `indexed` / `failed`
+| Método | Ruta | Descripción · errores |
+|---|---|---|
+| `GET` | `/manuals` | Lista todos los manuales (rellena `sha256` perezosamente desde MinIO si falta). |
+| `GET` | `/manuals/review-summaries` | Resúmenes de revisión semántica por manual. |
+| `GET` | `/manuals/{manual_id}` | Detalle de un manual. **404** si no existe. |
+| `GET` | `/manuals/{manual_id}/file` | Devuelve el PDF original (`inline`). **503** si MinIO falla. |
+| `POST` | `/manuals` | **multipart/form-data**: `title` (3-255), `file` (PDF), `robot_model?`, `controller_version?`, `document_language` (`es`/`en`), `category?[]`, `notes?`, `as_new_version?`. `201`. **400** si no es PDF o está vacío; **409** si el SHA-256 ya existe (salvo `as_new_version=true`); **503** si MinIO falla. Audita `MANUAL_UPLOADED`. |
+| `PUT` | `/manuals/{manual_id}` | Actualiza `title`, `notes`, `categories`. Audita `MANUAL_UPDATED`. |
+| `POST` | `/manuals/{manual_id}/retry` | Reencola un manual. **409** si está `processing` o `indexed`. |
+| `POST` | `/manuals/{manual_id}/cancel` | Cancela; borra chunks y marca `failed`. **409** si no está `pending`/`processing`. |
+| `POST` | `/manuals/cleanup-stale-processing?older_than_minutes=` | Reencola manuales atascados en `processing` (umbral 1-1440 min, default 10). |
+| `DELETE` | `/manuals/{manual_id}` | **Elimina físicamente** el manual + chunks + reviews + PDF en MinIO. `204`. Audita `MANUAL_DELETED`. |
 
----
-
-## Admin — `/api/v1/admin`
-
-| Método | Ruta | Auth | Descripción |
-|---|---|---|---|
-| `GET` | `/api/v1/admin/status` | `admin` | Estado del sistema: conteos de manuales, usuarios y jobs pendientes |
-| `GET` | `/api/v1/admin/role-permissions` | `admin` | Lista los permisos de rol configurados |
-| `POST` | `/api/v1/admin/role-permissions` | `admin` | Crea un permiso de rol |
-| `PUT` | `/api/v1/admin/role-permissions/{id}` | `admin` | Actualiza un permiso de rol |
-| `DELETE` | `/api/v1/admin/role-permissions/{id}` | `admin` | Elimina un permiso de rol |
-| `GET` | `/api/v1/admin/users` | `admin` | Lista todos los usuarios |
-| `GET` | `/api/v1/admin/users/{user_id}` | `admin` | Detalle de un usuario |
-| `POST` | `/api/v1/admin/users` | `admin` | Crea un nuevo usuario |
-| `PUT` | `/api/v1/admin/users/{user_id}` | `admin` | Actualiza datos y roles de un usuario |
-| `DELETE` | `/api/v1/admin/users/{user_id}` | `admin` | Deshabilita un usuario (no lo elimina físicamente) |
+**Estados:** `pending` → `processing` → `indexed` / `failed`.
 
 ---
 
-## Settings — `/api/v1/admin/settings`
+## Admin — `/api/v1/admin` · [admin.py](../../apps/api/src/api/v1/routes/admin.py)
 
-| Método | Ruta | Auth | Descripción |
-|---|---|---|---|
-| `GET` | `/api/v1/admin/settings/` | `admin` | Lista todos los parámetros configurables con sus valores actuales |
-| `GET` | `/api/v1/admin/settings/{key}` | `admin` | Obtiene el valor de un parámetro específico |
-| `PUT` | `/api/v1/admin/settings/{key}` | `admin` | Actualiza el valor de un parámetro; genera evento `SETTING_UPDATED` en audit |
-| `POST` | `/api/v1/admin/settings/reset` | `admin` | Restaura todos los parámetros a sus valores por defecto; genera evento `SETTING_RESET` |
+> Todas requieren **`admin`**.
 
-Ver [docs/backend/settings-module.md](./settings-module.md) para la tabla completa de parámetros.
+| Método | Ruta | Descripción · errores |
+|---|---|---|
+| `GET` | `/admin/status` | `{ manuals_indexed, active_users, pending_jobs }`. |
+| `GET` | `/admin/roles/permissions` | Lista permisos de rol. |
+| `POST` | `/admin/roles/permissions` | Crea permiso. `201`. **409** si la clave existe. |
+| `PUT` | `/admin/roles/permissions/{permission_id}` | Actualiza permiso. **404** si no existe. |
+| `DELETE` | `/admin/roles/permissions/{permission_id}` | Borra permiso. `204`. **404** si no existe. |
+| `GET` | `/admin/users` | Lista usuarios. |
+| `GET` | `/admin/users/{user_id}` | Detalle. **404** si no existe. |
+| `POST` | `/admin/users` | Crea usuario. `201`. **409** email duplicado; **400** contraseña débil. Audita `ADMIN_USER_CREATED`. |
+| `PUT` | `/admin/users/{user_id}` | Actualiza. **400** si te auto-quitas admin / te desactivas, o si demota al último admin activo. Audita `ADMIN_USER_UPDATED`. |
+| `DELETE` | `/admin/users/{user_id}` | **Elimina físicamente** el usuario. `204`. **400** si es uno mismo o el último admin. Audita `ADMIN_USER_DELETED`. |
+
+> La ruta de permisos es `/admin/roles/permissions` (no `/admin/role-permissions`).
 
 ---
 
-## Audit — `/api/v1/admin/audit`
+## Settings — `/api/v1/admin/settings` · [settings.py](../../apps/api/src/api/v1/routes/settings.py)
 
-| Método | Ruta | Auth | Descripción |
-|---|---|---|---|
-| `GET` | `/api/v1/admin/audit/` | `admin` | Lista eventos del audit log (paginado, filtros opcionales) |
-| `GET` | `/api/v1/admin/audit/{log_id}` | `admin` | Detalle de un evento de auditoría |
+> Todas requieren **`admin`**.
 
-**Query params para listado:**
-`event_type`, `actor_id`, `resource_type`, `date_from`, `date_to`, `page` (default 1), `page_size` (default 50, máx 200)
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/admin/settings` | Lista parámetros con valor actual. |
+| `GET` | `/admin/settings/{key}` | Valor de un parámetro. **404** si no existe. |
+| `PUT` | `/admin/settings/{key}` | Actualiza el valor. **404** si no existe. Audita `SETTING_UPDATED`. |
+| `POST` | `/admin/settings/reset` | Restaura defaults. Audita `SETTING_RESET`. |
 
-Ver [docs/backend/audit-module.md](./audit-module.md) para la lista completa de eventos.
+Ver [settings-module.md](./settings-module.md) para el catálogo completo y cuáles se leen realmente.
+
+---
+
+## Audit — `/api/v1/admin/audit` · [audit.py](../../apps/api/src/api/v1/routes/audit.py)
+
+> Todas requieren **`admin`**.
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| `GET` | `/admin/audit` | Lista paginada. Filtros: `event_type`, `actor_id`, `resource_type`, `date_from`, `date_to`, `page` (≥1), `page_size` (1-200, default 50). |
+| `GET` | `/admin/audit/{log_id}` | Detalle por UUID. **404** si no existe. |
+
+Ver [audit-module.md](./audit-module.md) para la lista de tipos de evento.
