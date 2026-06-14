@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import DateTime, ForeignKey, Integer, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.db.base import Base
-from src.db.types import EmbeddingVector
+from rc7_shared_db.base import Base
+from rc7_shared_db.types import EMBEDDING_DIM, EmbeddingVector
+
+__all__ = ["EMBEDDING_DIM", "ManualChunk"]
 
 
 class ManualChunk(Base):
@@ -20,7 +21,7 @@ class ManualChunk(Base):
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     page_number: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[Optional[list[float]]] = mapped_column(
+    embedding: Mapped[list[float] | None] = mapped_column(
         EmbeddingVector(), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(

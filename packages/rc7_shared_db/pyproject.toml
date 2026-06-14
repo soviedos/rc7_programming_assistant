@@ -1,0 +1,17 @@
+[project]
+name = "rc7-shared-db"
+version = "0.1.0"
+description = "Modelos ORM y Base declarativa compartidos por apps/api y apps/worker"
+requires-python = ">=3.12"
+dependencies = [
+  "SQLAlchemy>=2.0.41,<3.0.0",
+  "pgvector>=0.3.0,<1.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=80.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rc7_shared_db*"]

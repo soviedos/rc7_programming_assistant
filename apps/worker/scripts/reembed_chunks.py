@@ -13,7 +13,7 @@ import sys
 
 from sqlalchemy import select, update
 
-from src.db.models.manual_chunk import ManualChunk
+from src.db.models import ManualChunk
 from src.db.session import SessionLocal, initialize_database
 from src.services.embeddings import embed_texts
 from src.utils.logging import log

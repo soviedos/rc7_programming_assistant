@@ -102,6 +102,7 @@ def _split_text_for_autofix(text: str) -> tuple[str, str] | None:
 def apply_safe_chunk_autofixes(
     chunks: list[TextChunk],
     review_results: list[ChunkReviewResult],
+    reviewer: GeminiSemanticReviewer | None = None,
 ) -> tuple[list[TextChunk], int]:
     if not settings.semantic_review_autofix_enabled:
         return chunks, 0
@@ -157,6 +158,35 @@ def apply_safe_chunk_autofixes(
                 applied_count += 1
                 index += 1
                 continue
+
+        if (
+            review
+            and review.action == "regenerate"
+            and reviewer is not None
+            and (review.coherence_score is not None)
+            and review.coherence_score
+            <= settings.semantic_review_regenerate_max_coherence
+        ):
+            try:
+                rewritten = reviewer.regenerate_chunk(chunk)
+            except Exception:
+                rewritten = None  # fail-safe: keep the original chunk
+
+            if (
+                rewritten
+                and rewritten.strip()
+                and rewritten.strip() != chunk.text.strip()
+            ):
+                fixed_chunks.append(
+                    TextChunk(page_number=chunk.page_number, text=rewritten.strip())
+                )
+                review.reason = _append_reason(
+                    review.reason, "Auto-fix aplicado: regenerate."
+                )
+                applied_count += 1
+                index += 1
+                continue
+            # rewrite failed or returned unchanged → fall through to keep
 
         fixed_chunks.append(chunk)
         index += 1
@@ -405,7 +435,7 @@ def process_next_pending_manual(
                     manual, chunks, reviewer
                 )
                 fixed_chunks, applied_autofixes = apply_safe_chunk_autofixes(
-                    chunks, review_results
+                    chunks, review_results, reviewer
                 )
 
                 summary = build_review_metrics_summary(

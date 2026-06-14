@@ -46,10 +46,12 @@ DEFAULT_ROLE_PERMISSIONS = [
 ]
 
 
-# Embedding dimensionality — MUST match _EMBED_DIM in the chat service,
-# _OUTPUT_DIMENSIONALITY in the worker, and Vector(N) in the ManualChunk model.
-EMBEDDING_DIM = 3072
-_EMBEDDING_INDEX = "manual_chunks_embedding_hnsw_idx"
+# Embedding dimensionality — single-sourced from config (settings.gemini_embed_dim),
+# identical across the chat service, the worker and the ManualChunk Vector(N).
+EMBEDDING_DIM = settings.gemini_embed_dim
+_EMBEDDING_INDEX = "manual_chunks_embedding_hnsw"
+# Legacy index name from a previous migration — dropped if present.
+_EMBEDDING_INDEX_LEGACY = "manual_chunks_embedding_hnsw_idx"
 
 
 def initialize_database() -> None:
@@ -168,11 +170,10 @@ def ensure_chunk_embedding_column() -> None:
         ).scalar()
 
         if current_type != target_type:
-            # Drop a legacy/wrong-typed column and its dependent index, then
+            # Drop a legacy/wrong-typed column and its dependent indexes, then
             # recreate at the correct vector dimension (repopulated on re-embed).
-            connection.execute(
-                text(f"DROP INDEX IF EXISTS {_EMBEDDING_INDEX}")
-            )
+            connection.execute(text(f"DROP INDEX IF EXISTS {_EMBEDDING_INDEX}"))
+            connection.execute(text(f"DROP INDEX IF EXISTS {_EMBEDDING_INDEX_LEGACY}"))
             connection.execute(
                 text("ALTER TABLE manual_chunks DROP COLUMN IF EXISTS embedding")
             )
@@ -182,6 +183,12 @@ def ensure_chunk_embedding_column() -> None:
                 )
             )
 
+        # Drop the legacy-named index so only the canonical one remains.
+        connection.execute(text(f"DROP INDEX IF EXISTS {_EMBEDDING_INDEX_LEGACY}"))
+        # HNSW cosine index. pgvector caps HNSW on `vector` at 2000 dims, so for
+        # 3072-dim embeddings the index is built on a halfvec cast (up to 4000
+        # dims) with halfvec_cosine_ops; queries cast both sides to halfvec so
+        # the `<=>` ORDER BY uses this index.
         connection.execute(
             text(
                 f"CREATE INDEX IF NOT EXISTS {_EMBEDDING_INDEX} "

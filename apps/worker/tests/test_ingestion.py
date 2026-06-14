@@ -395,3 +395,109 @@ def test_apply_safe_chunk_autofixes_splits_long_chunk(monkeypatch) -> None:
     assert fixed_chunks[0].text
     assert fixed_chunks[1].text
     assert "Auto-fix aplicado: split." in (reviews[0].reason or "")
+
+
+class _RegenReviewerStub:
+    """Stub reviewer exposing only regenerate_chunk for the autofix path."""
+
+    def __init__(self, rewritten: str | None) -> None:
+        self.rewritten = rewritten
+        self.calls = 0
+
+    def regenerate_chunk(self, chunk):  # type: ignore[no-untyped-def]
+        self.calls += 1
+        return self.rewritten
+
+
+def test_apply_safe_chunk_autofixes_regenerates_chunk(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_autofix_enabled", True
+    )
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_regenerate_max_coherence", 0.5
+    )
+
+    reviewer = _RegenReviewerStub("Texto corregido sin saltos espurios.")
+    chunks = [TextChunk(page_number=3, text="Texto con\nsaltos\nespurios")]
+    reviews = [
+        ChunkReviewResult(
+            chunk_index=0,
+            page_number=3,
+            review_status="reviewed",
+            action="regenerate",
+            coherence_score=0.3,
+            reason="baja coherencia",
+        )
+    ]
+
+    fixed_chunks, applied_count = apply_safe_chunk_autofixes(chunks, reviews, reviewer)
+
+    assert reviewer.calls == 1
+    assert applied_count == 1
+    assert len(fixed_chunks) == 1
+    assert fixed_chunks[0].page_number == 3
+    assert fixed_chunks[0].text == "Texto corregido sin saltos espurios."
+    assert "Auto-fix aplicado: regenerate." in (reviews[0].reason or "")
+
+
+def test_apply_safe_chunk_autofixes_regenerate_keeps_on_failure(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_autofix_enabled", True
+    )
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_regenerate_max_coherence", 0.5
+    )
+
+    class _FailingReviewer:
+        def regenerate_chunk(self, chunk):  # type: ignore[no-untyped-def]
+            raise RuntimeError("Gemini no disponible")
+
+    original = "Texto original que se debe conservar."
+    chunks = [TextChunk(page_number=1, text=original)]
+    reviews = [
+        ChunkReviewResult(
+            chunk_index=0,
+            page_number=1,
+            review_status="reviewed",
+            action="regenerate",
+            coherence_score=0.2,
+        )
+    ]
+
+    fixed_chunks, applied_count = apply_safe_chunk_autofixes(
+        chunks, reviews, _FailingReviewer()
+    )
+
+    assert applied_count == 0
+    assert len(fixed_chunks) == 1
+    assert fixed_chunks[0].text == original  # kept on failure (fail-safe)
+
+
+def test_apply_safe_chunk_autofixes_regenerate_skipped_above_threshold(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_autofix_enabled", True
+    )
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_regenerate_max_coherence", 0.5
+    )
+
+    reviewer = _RegenReviewerStub("no debería usarse")
+    original = "Chunk con coherencia aceptable."
+    chunks = [TextChunk(page_number=1, text=original)]
+    reviews = [
+        ChunkReviewResult(
+            chunk_index=0,
+            page_number=1,
+            review_status="reviewed",
+            action="regenerate",
+            coherence_score=0.9,  # above the regenerate threshold → keep
+        )
+    ]
+
+    fixed_chunks, applied_count = apply_safe_chunk_autofixes(chunks, reviews, reviewer)
+
+    assert reviewer.calls == 0
+    assert applied_count == 0
+    assert fixed_chunks[0].text == original

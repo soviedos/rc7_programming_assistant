@@ -13,14 +13,13 @@ from sqlalchemy.orm import Session
 
 from src.api.v1.schemas.chat import ChatRequest, ChatResponse, ReferenceItem
 from src.core.config import settings
-from src.db.models.manual import Manual
-from src.db.models.manual_chunk import ManualChunk
+from src.db.models import Manual, ManualChunk
 from src.services.settings.service import _DEFAULT_PAC_RULES, get_setting_value
 
-# Model names are centralised in config (env-overridable) — not hardcoded here.
-_EMBED_MODEL = settings.gemini_embedding_model
-_EMBED_DIM = 3072
-_GEN_MODEL = settings.gemini_model
+# Model names and embedding dim are centralised in config (env-overridable).
+_EMBED_MODEL = settings.gemini_embed_model
+_EMBED_DIM = settings.gemini_embed_dim
+_GEN_MODEL = settings.gemini_gen_model
 
 # Fallback constants — used when DB settings are unavailable.
 _TOP_K = 6
@@ -217,6 +216,7 @@ def _retrieve_chunks(
         select(ManualChunk, Manual, distance.label("distance"))
         .join(Manual, Manual.id == ManualChunk.manual_id)
         .where(ManualChunk.embedding.isnot(None))
+        .where(Manual.status == "indexed")
         .order_by(distance)
         .limit(candidate_pool)
     ).all()

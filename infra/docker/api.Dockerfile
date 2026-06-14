@@ -7,10 +7,14 @@ ENV PYTHONUNBUFFERED=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends libpq5 && rm -rf /var/lib/apt/lists/*
 
+# Shared ORM package — installed editable first so the app dep is satisfied.
+COPY packages/rc7_shared_db /opt/rc7_shared_db
+RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -e /opt/rc7_shared_db
+
 COPY apps/api/pyproject.toml ./
 COPY apps/api/src ./src
 
-RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -e ".[dev]"
+RUN pip install --no-cache-dir -e ".[dev]"
 
 # Run as non-root for security
 RUN addgroup --system --gid 1001 appgroup && \

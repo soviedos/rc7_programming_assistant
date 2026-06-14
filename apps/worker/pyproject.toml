@@ -10,7 +10,10 @@ dependencies = [
   "pydantic-settings>=2.13.1,<3.0.0",
   "SQLAlchemy>=2.0.41,<3.0.0",
   "pgvector>=0.3.0,<1.0.0",
-  "google-genai>=1.0.0"
+  "google-genai>=1.0.0",
+  # Shared ORM models / Base — installed editable from packages/rc7_shared_db
+  # (see infra/docker/worker.Dockerfile); not published to PyPI.
+  "rc7-shared-db"
 ]
 
 [project.optional-dependencies]

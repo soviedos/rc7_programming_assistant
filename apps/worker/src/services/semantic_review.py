@@ -217,7 +217,7 @@ def build_review_metrics_summary(
 class GeminiSemanticReviewer:
     def __init__(self) -> None:
         self._api_key = settings.gemini_api_key.strip()
-        self._model = settings.gemini_model
+        self._model = settings.gemini_gen_model
         self._timeout_seconds = settings.gemini_timeout_seconds
 
     @property
@@ -264,6 +264,22 @@ class GeminiSemanticReviewer:
             raw_response=response_text,
         )
 
+    def regenerate_chunk(self, chunk: TextChunk) -> str | None:
+        """Rewrite a chunk fixing PDF-extraction artifacts, never inventing content.
+
+        Returns the corrected text, or ``None`` if regeneration is unavailable or
+        fails (caller keeps the original chunk — fail-safe).
+        """
+        if not self.enabled():
+            return None
+        prompt = self._build_regenerate_prompt(chunk)
+        try:
+            corrected = self._call_gemini(prompt, response_mime_type="text/plain")
+        except SemanticReviewError:
+            return None
+        cleaned = corrected.strip()
+        return cleaned or None
+
     def _build_prompt(self, manual: Manual, chunk_index: int, chunk: TextChunk) -> str:
         return "\n".join(
             [
@@ -280,7 +296,26 @@ class GeminiSemanticReviewer:
             ]
         )
 
-    def _call_gemini(self, prompt: str) -> str:
+    def _build_regenerate_prompt(self, chunk: TextChunk) -> str:
+        return "\n".join(
+            [
+                "Reescribe el siguiente fragmento de un manual tecnico corrigiendo SOLO "
+                "artefactos de extraccion de PDF:",
+                "- une saltos de linea espurios dentro de oraciones o parrafos,",
+                "- reconstruye encabezados o palabras fragmentadas,",
+                "- normaliza espacios duplicados.",
+                "REGLAS ESTRICTAS:",
+                "- NO inventes ni agregues contenido que no este en el fragmento.",
+                "- NO elimines informacion ni cambies el significado, cifras, codigos ni terminologia.",
+                "- Devuelve UNICAMENTE el texto corregido, sin comentarios ni markdown.",
+                "FRAGMENTO:",
+                chunk.text,
+            ]
+        )
+
+    def _call_gemini(
+        self, prompt: str, *, response_mime_type: str = "application/json"
+    ) -> str:
         client = genai.Client(
             api_key=self._api_key,
             http_options=types.HttpOptions(
@@ -293,7 +328,7 @@ class GeminiSemanticReviewer:
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.1,
-                    response_mime_type="application/json",
+                    response_mime_type=response_mime_type,
                 ),
             )
         except Exception as exc:

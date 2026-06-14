@@ -18,8 +18,9 @@ class Settings(BaseSettings):
     worker_manual_timeout_extra_per_mb_seconds: int = 30
     worker_manual_timeout_max_seconds: int = 1800
     gemini_api_key: str = "replace_me"
-    gemini_model: str = "gemini-3.5-flash"
-    gemini_embedding_model: str = "gemini-embedding-2"
+    gemini_gen_model: str = "gemini-3.5-flash"
+    gemini_embed_model: str = "gemini-embedding-2"
+    gemini_embed_dim: int = 3072  # must be identical in api and worker
     gemini_timeout_seconds: int = 8
     semantic_review_enabled: bool = True
     semantic_review_sample_rate: float = 0.1
@@ -29,6 +30,8 @@ class Settings(BaseSettings):
     semantic_review_merge_boundary_max: float = 0.6
     semantic_review_split_max_coherence: float = 0.65
     semantic_review_split_min_chars: int = 1800
+    # Only regenerate (rewrite) a chunk when its coherence is at or below this.
+    semantic_review_regenerate_max_coherence: float = 0.5
     semantic_review_enabled_languages: str = "es,en"
     semantic_review_title_include_terms: str = ""
     semantic_review_max_reviews_per_manual: int = 100

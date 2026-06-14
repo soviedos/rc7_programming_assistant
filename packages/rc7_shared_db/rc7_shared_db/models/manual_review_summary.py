@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from src.db.base import Base
+from rc7_shared_db.base import Base
 
 
 class ManualReviewSummary(Base):

@@ -47,6 +47,8 @@ services:
     volumes:
       - ./apps/api:/app
       - ./logs/api:/app/logs
+      # Shared ORM package (editable install) — live-editable in dev.
+      - ./packages/rc7_shared_db:/opt/rc7_shared_db
     ports:
       - "8000:8000"
     depends_on:
@@ -78,6 +80,8 @@ services:
     volumes:
       - ./apps/worker:/app
       - ./logs/worker:/app/logs
+      # Shared ORM package (editable install) — live-editable in dev.
+      - ./packages/rc7_shared_db:/opt/rc7_shared_db
     depends_on:
       postgres:
         condition: service_healthy

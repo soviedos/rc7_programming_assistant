@@ -11,8 +11,8 @@ from google.genai import types
 from src.core.config import settings
 from src.utils.logging import log
 
-_EMBEDDING_MODEL = settings.gemini_embedding_model
-_OUTPUT_DIMENSIONALITY = 3072  # must match _EMBED_DIM in apps/api
+_EMBEDDING_MODEL = settings.gemini_embed_model
+_OUTPUT_DIMENSIONALITY = settings.gemini_embed_dim  # must match the API's value
 _BATCH_SIZE = 100  # max texts per batch call
 _RETRY_LIMIT = 3
 _RETRY_BACKOFF = 2.0  # seconds

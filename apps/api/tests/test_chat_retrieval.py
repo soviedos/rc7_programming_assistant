@@ -12,8 +12,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from src.api.v1.schemas.chat import ChatRequest
-from src.db.models.manual import Manual
-from src.db.models.manual_chunk import EMBEDDING_DIM, ManualChunk
+from src.db.models import EMBEDDING_DIM, Manual, ManualChunk
 from src.services.chat.service import _retrieve_chunks
 
 
@@ -44,6 +43,7 @@ def _make_manual(
     categories: list[str],
     robot_model: str | None = None,
     controller_version: str | None = None,
+    status: str = "indexed",
 ) -> Manual:
     manual = Manual(
         title=title,
@@ -51,7 +51,7 @@ def _make_manual(
         storage_key=storage_key,
         content_type="application/pdf",
         size_bytes=100,
-        status="indexed",
+        status=status,
         categories=categories,
         robot_model=robot_model,
         controller_version=controller_version,
@@ -161,6 +161,44 @@ def test_retrieve_chunks_skips_chunks_without_embedding(db_session: Session) -> 
     results = _retrieve_chunks(db_session, _unit_axis(0), _payload(), top_k=5)
 
     assert [chunk.text for chunk, _m, _s in results] == ["has-embedding"]
+
+
+def test_retrieve_chunks_excludes_non_indexed_manuals(db_session: Session) -> None:
+    """Only chunks belonging to manuals with status='indexed' are searched."""
+    indexed = _make_manual(
+        db_session, title="Indexed", storage_key="k/idx.pdf", categories=[]
+    )
+    processing = _make_manual(
+        db_session,
+        title="Processing",
+        storage_key="k/proc.pdf",
+        categories=[],
+        status="processing",
+    )
+    # Both chunks carry the exact query vector; only the indexed one is eligible.
+    db_session.add(
+        ManualChunk(
+            manual_id=indexed.id,
+            chunk_index=0,
+            page_number=1,
+            text="indexed-chunk",
+            embedding=_unit_axis(0),
+        )
+    )
+    db_session.add(
+        ManualChunk(
+            manual_id=processing.id,
+            chunk_index=0,
+            page_number=1,
+            text="processing-chunk",
+            embedding=_unit_axis(0),
+        )
+    )
+    db_session.commit()
+
+    results = _retrieve_chunks(db_session, _unit_axis(0), _payload(), top_k=5)
+
+    assert [chunk.text for chunk, _m, _s in results] == ["indexed-chunk"]
 
 
 # ── Hardware-compatibility re-ranking ──────────────────────────────
@@ -298,3 +336,62 @@ def test_controller_mismatch_penalised(db_session: Session) -> None:
     # Equal similarity, but RC7 matches (×1.15) and RC8 is penalised (×0.85).
     assert results[0][0].text == "rc7-chunk"
     assert results[1][0].text == "rc8-chunk"
+
+
+def test_hardware_match_prioritised_over_category_boost(db_session: Session) -> None:
+    """Robot-config compatibility prioritises over the documental category boost.
+
+    A chunk from the user's exact robot+controller (no category boost) must
+    outrank a raw-closer, category-boosted chunk from different hardware —
+    proving retrieval prioritises by hardware config, not category alone.
+    """
+    # Category-boosted (programming ×1.30) but for other hardware.
+    other_hw = _make_manual(
+        db_session,
+        title="Programming (other robot)",
+        storage_key="k/cat-other.pdf",
+        categories=["programming"],
+        robot_model="VS-060",  # mismatch ×0.70
+        controller_version="RC8",  # mismatch ×0.85
+    )
+    # User's exact hardware, no category boost.
+    my_hw = _make_manual(
+        db_session,
+        title="My robot manual",
+        storage_key="k/my-hw.pdf",
+        categories=[],
+        robot_model="VP-6242",  # match ×1.30
+        controller_version="RC7.2",  # match ×1.15
+    )
+    db_session.add(
+        ManualChunk(
+            manual_id=other_hw.id,
+            chunk_index=0,
+            page_number=1,
+            text="other-hw-programming",
+            embedding=_sim_vector(0.80),
+        )
+    )
+    db_session.add(
+        ManualChunk(
+            manual_id=my_hw.id,
+            chunk_index=0,
+            page_number=1,
+            text="my-hw",
+            embedding=_sim_vector(0.70),
+        )
+    )
+    db_session.commit()
+
+    results = _retrieve_chunks(
+        db_session,
+        _unit_axis(0),
+        _payload(robot_type="VP-6242", controller="RC7"),
+        top_k=2,
+    )
+
+    # my-hw:    0.70 · (1.30·1.15)        = 1.05
+    # other-hw: 0.80 · (0.70·0.85) · 1.30 = 0.62  (category boost not enough)
+    assert results[0][0].text == "my-hw"
+    assert results[1][0].text == "other-hw-programming"
+    assert results[0][2] > results[1][2]

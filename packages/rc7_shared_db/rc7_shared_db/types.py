@@ -1,11 +1,20 @@
+"""Cross-dialect column types shared by the ORM models.
+
+On PostgreSQL these resolve to native ``ARRAY``/``vector`` types; on any other
+dialect (e.g. SQLite used by the worker test-suite) they fall back to JSON so
+table creation and NULL storage keep working without a pgvector-enabled DB.
+"""
+
+import os
+
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import JSON, String
 from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.types import TypeDecorator
 
-# Embedding dimensionality — MUST match _OUTPUT_DIMENSIONALITY in the worker's
-# embeddings service and _EMBED_DIM in the API chat service.
-EMBEDDING_DIM = 3072
+# Embedding dimensionality — single source of truth for the shared models.
+# Overridable via GEMINI_EMBED_DIM; MUST match the api/worker ``gemini_embed_dim``.
+EMBEDDING_DIM = int(os.environ.get("GEMINI_EMBED_DIM", "3072"))
 
 
 class ArrayOfString(TypeDecorator):
