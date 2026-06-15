@@ -50,7 +50,9 @@ en programas modulares el control de motores puede estar en el programa principa
     * Las señales se nombran con macros: ioParts, ioPartsAck, ioGripperOpen, etc.
     * Para esperar entrada y activar salida: CALL dioWaitAndSet(ioIn, ioOut)
     * Para activar salida y esperar confirmación: CALL dioSetAndWait(ioOut, ioAck)
-    * Asignación directa: IO[ioGripperOpen] = ON  o  IO[ioGripperOpen] = OFF
+    * Para ACTIVAR una salida:    SET IO[ioGripperOpen]      (NUNCA IO[ioGripperOpen] = ON)
+    * Para DESACTIVAR una salida: RESET IO[ioGripperOpen]     (NUNCA IO[ioGripperOpen] = OFF)
+    * La forma IO[n] = ON / OFF SOLO es válida como condición en IF/WAIT.
 - LLAMADAS:
     * Programa externo: CALL pro2  (sin asterisco)
     * Subrutina interna: GOSUB *PlacePartsA  (con asterisco, SIN dos puntos al llamar)
@@ -252,3 +254,38 @@ def seed_if_empty(db: Session) -> None:
         if existing is None:
             db.add(SystemSetting(key=key, value=value, description=description))
     db.commit()
+
+
+# ── Idempotent prompt migrations ───────────────────────────────────
+# WinCaps III rejects `IO[n] = ON/OFF` as an assignment ("Instruction not
+# conform to format. Kw(IO)"); the correct form is SET/RESET. The legacy line
+# below was once recommended by the default prompt and may persist in saved
+# settings, which take precedence over the (now-fixed) code default.
+
+_LEGACY_IO_ASSIGN = (
+    "Asignación directa: IO[ioGripperOpen] = ON  o  IO[ioGripperOpen] = OFF"
+)
+# Replaces ONLY the legacy substring, keeping the leading "    * " bullet that
+# precedes it; the result matches the corrected code default verbatim.
+_FIXED_IO_ASSIGN = (
+    "Para ACTIVAR una salida:    SET IO[ioGripperOpen]      (NUNCA IO[ioGripperOpen] = ON)\n"
+    "    * Para DESACTIVAR una salida: RESET IO[ioGripperOpen]     (NUNCA IO[ioGripperOpen] = OFF)\n"
+    "    * La forma IO[n] = ON / OFF SOLO es válida como condición en IF/WAIT."
+)
+
+
+def fix_legacy_io_assignment_prompt(db: Session) -> bool:
+    """Replace the legacy invalid IO-assignment line in a saved system_prompt_pac.
+
+    Substring replacement only (preserves any other user customisation), idempotent
+    (no-op once the legacy substring is gone), and safe when the row is absent.
+    Returns ``True`` only when a row was actually updated.
+    """
+    row = db.scalar(
+        select(SystemSetting).where(SystemSetting.key == "system_prompt_pac")
+    )
+    if row is None or _LEGACY_IO_ASSIGN not in row.value:
+        return False
+    row.value = row.value.replace(_LEGACY_IO_ASSIGN, _FIXED_IO_ASSIGN)
+    db.commit()
+    return True

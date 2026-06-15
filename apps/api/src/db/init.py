@@ -274,8 +274,11 @@ def ensure_audit_log_table() -> None:
 def seed_default_settings() -> None:
     """Insert default system settings for any keys not yet present."""
     from src.services.settings.service import (
+        fix_legacy_io_assignment_prompt,
         seed_if_empty,
     )  # local import avoids circularity
 
     with SessionLocal() as session:
         seed_if_empty(session)
+        # Repair the legacy invalid IO-assignment line in already-saved prompts.
+        fix_legacy_io_assignment_prompt(session)
