@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 
 from google import genai
@@ -194,6 +194,87 @@ def _lint_pac_code(pac_code: str) -> tuple[str, int]:
                 break  # at most one statement-level rule matches a given line
         fixed.append(line)
     return "\n".join(fixed), applied
+
+
+# ── Two-level PAC verification ─────────────────────────────────────
+#
+#  Level 1 — _lint_pac_code: DETERMINISTIC auto-fixes. High-confidence, no
+#            context needed; it REWRITES the code and reports n_fixes.
+#  Level 2 — _pac_advisories: SEMANTIC advisories. Context-dependent, so they are
+#            only SHOWN to the user and NEVER modify the code (human review
+#            required). Both levels keep an extensible rule list.
+
+_MOTION_STMT = re.compile(r"^[ \t]*(?:MOVE|APPROACH|DEPART)\b")
+# Step (pass) designator: @P or @<positive int>. Excludes @0 (decelerate/stop)
+# and @E. A pass move does not stop precisely at the target.
+_STEP_DESIGNATOR = re.compile(r"@(?:P|[1-9]\d*)(?![A-Za-z0-9])")
+# Output actuation statement: SET IO[...] / RESET IO[...].
+_IO_ACTUATE_STMT = re.compile(r"^[ \t]*(?:SET|RESET)[ \t]+IO\[")
+
+
+def _next_significant_index(lines: list[str], i: int) -> int | None:
+    """Index of the next statement after ``i``, skipping blanks and ``'`` comments."""
+    for j in range(i + 1, len(lines)):
+        stripped = lines[j].strip()
+        if not stripped or stripped.startswith("'"):
+            continue
+        return j
+    return None
+
+
+def _advise_step_move_before_io(lines: list[str], i: int) -> str | None:
+    """Step motion (@P / @<n>) immediately before actuating an output.
+
+    A pass move does not decelerate to a precise stop, so toggling an output
+    right after it may happen before the robot reaches the target point. Does not
+    fire for @0 (which stops) nor when the next statement is another motion (a
+    pass is legitimate there).
+    """
+    line = lines[i]
+    if not _MOTION_STMT.match(line) or not _STEP_DESIGNATOR.search(line):
+        return None
+    nxt = _next_significant_index(lines, i)
+    if nxt is None or not _IO_ACTUATE_STMT.match(lines[nxt]):
+        return None
+    return (
+        f"Línea {i + 1}: movimiento de paso (@P) inmediatamente antes de actuar una "
+        "salida; el robot puede no detenerse con precisión en el punto objetivo. Usa @0 "
+        "para decelerar y parar en el objetivo si se requiere posicionamiento preciso "
+        "(p. ej. recogida/depósito)."
+    )
+
+
+@dataclass(frozen=True)
+class _PacAdvisoryRule:
+    name: str
+    # (lines, index) -> advisory message (with 1-based line number) or None.
+    check: Callable[[list[str], int], str | None]
+
+
+_PAC_ADVISORY_RULES: list[_PacAdvisoryRule] = [
+    _PacAdvisoryRule(
+        name="step_move_before_io", check=_advise_step_move_before_io
+    ),
+]
+
+
+def _pac_advisories(pac_code: str) -> list[str]:
+    """Level-2 semantic advisories (read-only) for ``pac_code``.
+
+    Returns human-readable warnings; **never** modifies the code (unlike
+    ``_lint_pac_code``). Line numbers are 1-based within ``pac_code``. Extend
+    ``_PAC_ADVISORY_RULES`` to add more checks from the error taxonomy.
+    """
+    if not pac_code:
+        return []
+    lines = pac_code.split("\n")
+    advisories: list[str] = []
+    for i in range(len(lines)):
+        for rule in _PAC_ADVISORY_RULES:
+            msg = rule.check(lines, i)
+            if msg:
+                advisories.append(msg)
+    return advisories
 
 
 def _normalize_hw(value: str | None) -> str:
@@ -670,10 +751,16 @@ def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
     # Make the .pac self-contained: prepend the deterministic source legend.
     pac_code = _prepend_source_legend(pac_code, source_map)
 
+    # Level-2 semantic advisories on the final code (read-only, shown to the user).
+    advisories = _pac_advisories(pac_code)
+    if advisories:
+        _logger.info("PAC advisories: %d advertencia(s) semántica(s)", len(advisories))
+
     return ChatResponse(
         summary=summary or "Respuesta generada.",
         pac_code=pac_code,
         references=references,
+        advisories=advisories,
     )
 
 
@@ -755,4 +842,9 @@ def stream_rag_response(
     # Make the .pac self-contained: prepend the deterministic source legend.
     pac_code = _prepend_source_legend(pac_code, source_map)
 
-    yield f"data: {json.dumps({'type': 'done', 'summary': summary or 'Respuesta generada.', 'pac_code': pac_code, 'references': references})}\n\n"
+    # Level-2 semantic advisories on the final code (read-only, shown to the user).
+    advisories = _pac_advisories(pac_code)
+    if advisories:
+        _logger.info("PAC advisories: %d advertencia(s) semántica(s)", len(advisories))
+
+    yield f"data: {json.dumps({'type': 'done', 'summary': summary or 'Respuesta generada.', 'pac_code': pac_code, 'references': references, 'advisories': advisories})}\n\n"

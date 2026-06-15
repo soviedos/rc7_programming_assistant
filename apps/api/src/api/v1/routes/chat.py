@@ -15,7 +15,11 @@ from src.api.v1.schemas.chat import (
 from src.core.config import settings
 from src.db.models.chat_history import ChatHistory
 from src.services.audit_service import log_event
-from src.services.chat.service import generate_rag_response, stream_rag_response
+from src.services.chat.service import (
+    _pac_advisories,
+    generate_rag_response,
+    stream_rag_response,
+)
 from src.services.settings.service import get_setting_value
 
 router = APIRouter()
@@ -89,6 +93,9 @@ def _serialize_history_item(item: ChatHistory) -> ChatHistoryItemResponse:
             )
             for r in (item.references or [])
         ],
+        # Advisories are a pure function of pac_code: derive (not store) them on
+        # read so history replay reflects the current level-2 checks.
+        advisories=_pac_advisories(item.pac_code or ""),
         robot_config=item.robot_config or {},
         entry_type=item.entry_type,
         created_at=item.created_at,
@@ -143,7 +150,7 @@ def generate_code(
         )
 
         def _single() -> Generator[str, None, None]:
-            yield f"data: {json.dumps({'type': 'done', 'summary': result.summary, 'pac_code': result.pac_code, 'references': refs})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'summary': result.summary, 'pac_code': result.pac_code, 'references': refs, 'advisories': result.advisories})}\n\n"
 
         return StreamingResponse(
             _single(), media_type="text/event-stream", headers=_SSE_HEADERS

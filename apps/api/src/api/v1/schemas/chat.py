@@ -32,6 +32,8 @@ class ChatResponse(BaseModel):
     summary: str
     pac_code: str
     references: list[ReferenceItem]
+    # Level-2 semantic warnings shown to the user; they never modify the code.
+    advisories: list[str] = []
 
 
 class ChatHistoryItemResponse(BaseModel):
@@ -40,6 +42,7 @@ class ChatHistoryItemResponse(BaseModel):
     summary: str
     pac_code: str
     references: list[ReferenceItem]
+    advisories: list[str] = []
     robot_config: dict
     entry_type: str
     created_at: datetime
