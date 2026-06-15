@@ -82,7 +82,11 @@ def _serialize_history_item(item: ChatHistory) -> ChatHistoryItemResponse:
         summary=item.summary,
         pac_code=item.pac_code,
         references=[
-            ReferenceItem(title=r.get("title", ""), page=r.get("page", ""))
+            ReferenceItem(
+                source_id=r.get("source_id", ""),
+                title=r.get("title", ""),
+                page=r.get("page", ""),
+            )
             for r in (item.references or [])
         ],
         robot_config=item.robot_config or {},
@@ -115,7 +119,10 @@ def generate_code(
                 detail=f"Error inesperado al procesar la consulta: {exc}",
             ) from exc
 
-        refs = [{"title": r.title, "page": r.page} for r in result.references]
+        refs = [
+            {"source_id": r.source_id, "title": r.title, "page": r.page}
+            for r in result.references
+        ]
         _save_history_and_prune(
             db, user, payload, result.summary, result.pac_code, refs
         )

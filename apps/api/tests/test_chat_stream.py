@@ -10,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from src.db.models import User
+from src.db.models import ChatHistory, User
 from tests.helpers import create_user, login
 
 # ---------------------------------------------------------------------------
@@ -114,3 +114,38 @@ def test_chat_stream_pipeline_error_yields_error_event(
 
     events = _parse_sse_events(resp.text)
     assert any(e.get("type") == "error" for e in events)
+
+
+def test_chat_history_persists_and_returns_source_id(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    """References (with source_id) survive in chat_history and round-trip via GET."""
+    user = create_user(
+        db_session, email="hist@test.com", password="Hist1234", roles=["user"]
+    )
+    login(client, "hist@test.com", "Hist1234")
+
+    db_session.add(
+        ChatHistory(
+            user_id=user.id,
+            prompt="¿pick and place?",
+            summary="Programa generado.",
+            pac_code="PROGRAM p\n    MOVE P, P1    ' fuente: S1\nEND",
+            references=[
+                {"source_id": "S1", "title": "Programmer Manual", "page": "12"},
+                {"source_id": "S2", "title": "Startup Guide", "page": "45"},
+            ],
+            robot_config={},
+            entry_type="code",
+        )
+    )
+    db_session.commit()
+
+    resp = client.get("/api/v1/chat/history")
+    assert resp.status_code == 200
+    refs = resp.json()["items"][0]["references"]
+    assert refs == [
+        {"source_id": "S1", "title": "Programmer Manual", "page": "12"},
+        {"source_id": "S2", "title": "Startup Guide", "page": "45"},
+    ]

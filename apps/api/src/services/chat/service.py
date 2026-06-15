@@ -80,37 +80,53 @@ def _embed_query(text_input: str, timeout_seconds: int | None = None) -> list[fl
 
 
 def _resolve_references(
-    raw_refs: object,
     source_map: dict[str, tuple[Manual, int]],
-) -> list[tuple[str, str]]:
-    """Resolve model-cited source IDs to deduplicated (title, page) pairs.
+) -> list[tuple[str, str, str]]:
+    """Return the full source legend for the response.
 
-    Extracts ``S<number>`` IDs from the model's ``references`` value, keeps only
-    those present in ``source_map`` (discarding hallucinated IDs), and falls back
-    to the full retrieved set when none of the cited IDs are valid.
+    One entry **per SID present in ``source_map``**, ordered S1…Sn, as
+    ``(source_id, title, page)``. The legend therefore covers EVERY ``S<n>`` that
+    can appear as an inline ``' fuente: SX`` comment in the generated PAC code, so
+    no cited ID is ever left unresolved.
+
+    The model's own ``references`` array is intentionally ignored: the saved
+    ``source_map`` is the single source of truth for ``SID → (manual, page)``.
+    This mapping is persisted with the message so a SID never has to be re-decoded
+    (and never invented) in a later turn.
     """
-    import re
 
-    cited: list[str] = []
-    if isinstance(raw_refs, (list, tuple)):
-        for item in raw_refs:
-            cited.extend(re.findall(r"S\d+", str(item)))
-    else:
-        cited = re.findall(r"S\d+", str(raw_refs or ""))
+    def _order(sid: str) -> int:
+        try:
+            return int(sid[1:])
+        except (ValueError, IndexError):
+            return 0
 
-    valid_ids = [sid for sid in cited if sid in source_map]
-    if not valid_ids:
-        valid_ids = list(source_map.keys())
+    return [
+        (sid, source_map[sid][0].title, str(source_map[sid][1]))
+        for sid in sorted(source_map, key=_order)
+    ]
 
-    seen: set[str] = set()
-    references: list[tuple[str, str]] = []
-    for sid in valid_ids:
-        manual, page = source_map[sid]
-        key = f"{manual.title}:{page}"
-        if key not in seen:
-            seen.add(key)
-            references.append((manual.title, str(page)))
-    return references
+
+def _prepend_source_legend(
+    pac_code: str,
+    source_map: dict[str, tuple[Manual, int]],
+) -> str:
+    """Prepend a PAC-comment source legend to non-empty ``pac_code``.
+
+    Built **deterministically from ``source_map``** (never asked to the model) so
+    the generated ``.pac`` file is self-contained outside the app. Uses the
+    apostrophe comment syntax — valid in WinCaps III — so it never affects
+    compilation. Only the SIDs present in ``source_map`` are included; if there
+    is no code or no source, the code is returned unchanged.
+    """
+    legend = _resolve_references(source_map)
+    if not pac_code or not legend:
+        return pac_code
+
+    block = ["' ─── Fuentes (trazabilidad) ───"]
+    block += [f"' {sid} = {title}, pág. {page}" for sid, title, page in legend]
+    block.append("' ──────────────────────────────")
+    return "\n".join(block) + "\n" + pac_code
 
 
 def _normalize_hw(value: str | None) -> str:
@@ -576,9 +592,11 @@ def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
     pac_code = str(data.get("pac_code", "")).strip()
 
     references = [
-        ReferenceItem(title=title, page=page)
-        for title, page in _resolve_references(data.get("references"), source_map)
+        ReferenceItem(source_id=sid, title=title, page=page)
+        for sid, title, page in _resolve_references(source_map)
     ]
+    # Make the .pac self-contained: prepend the deterministic source legend.
+    pac_code = _prepend_source_legend(pac_code, source_map)
 
     return ChatResponse(
         summary=summary or "Respuesta generada.",
@@ -654,8 +672,10 @@ def stream_rag_response(
     pac_code = str(data.get("pac_code", "")).strip()
 
     references = [
-        {"title": title, "page": page}
-        for title, page in _resolve_references(data.get("references"), source_map)
+        {"source_id": sid, "title": title, "page": page}
+        for sid, title, page in _resolve_references(source_map)
     ]
+    # Make the .pac self-contained: prepend the deterministic source legend.
+    pac_code = _prepend_source_legend(pac_code, source_map)
 
     yield f"data: {json.dumps({'type': 'done', 'summary': summary or 'Respuesta generada.', 'pac_code': pac_code, 'references': references})}\n\n"

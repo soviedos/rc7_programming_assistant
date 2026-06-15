@@ -135,6 +135,11 @@ usa un comentario indicando que debe configurarse ('ajustar según aplicación')
 realmente usaste (p. ej. ["S1","S3"]), o [] si no usaste ninguna fuente. NUNCA inventes \
 IDs que no aparezcan en el CONTEXTO. Cada instrucción o bloque PAC tomado de una fuente debe \
 llevar al final un comentario con su ID, p. ej.: MOVE P, P1    ' fuente: S2
+- Los identificadores de fuente (S1, S2, …) son etiquetas de trazabilidad asignadas por el \
+sistema y se le muestran al usuario como una leyenda junto a la respuesta. NUNCA inventes ni \
+expliques a qué manual corresponde un SX: no tienes acceso al mapeo de una respuesta anterior. \
+Si el usuario pregunta qué significa un SX, indícale que consulte la leyenda de fuentes mostrada \
+con esa respuesta; no adivines.
 
 Reglas adicionales:
 1. NUNCA omitas el PROGRAM ni el END.

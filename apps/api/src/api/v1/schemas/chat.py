@@ -23,6 +23,7 @@ class ChatRequest(BaseModel):
 
 
 class ReferenceItem(BaseModel):
+    source_id: str  # stable traceability ID for this response, e.g. "S2"
     title: str
     page: str
 
