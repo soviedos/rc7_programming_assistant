@@ -11,31 +11,32 @@
 ### Topología de servicios
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'14px','lineColor':'#94a3b8'},'flowchart':{'curve':'basis','nodeSpacing':45,'rankSpacing':60}}}%%
 flowchart TB
-    Browser(["🌐 Browser"])
+    Browser(["🌐 Browser"]):::client
 
     subgraph DockerStack["🐳 Docker Compose Stack"]
-        Nginx["Nginx\n:80 / :443\nSSE: proxy_buffering off\nread_timeout 310s"]
+        Nginx["Nginx\n:80 / :443\nSSE: proxy_buffering off\nread_timeout 310s"]:::prod
 
         subgraph FE["apps/web — Next.js 16  ·  :3000"]
-            NextJS["App Router · TypeScript · Tailwind\nSSE Consumer · Rutas protegidas por rol\nWorkspace PAC · Consola admin"]
+            NextJS["App Router · TypeScript · Tailwind\nSSE Consumer · Rutas protegidas por rol\nWorkspace PAC · Consola admin"]:::frontend
         end
 
         subgraph BE["apps/api — FastAPI  ·  :8000"]
-            FastAPI["auth · profile · chat · manuals\nadmin · settings · audit\nJWT HttpOnly · SQLAlchemy · Pydantic v2"]
+            FastAPI["auth · profile · chat · manuals\nadmin · settings · audit\nJWT HttpOnly · SQLAlchemy · Pydantic v2"]:::backend
         end
 
         subgraph WK["apps/worker — Python 3.12"]
-            Worker["Polling PostgreSQL cada ~5 s\nFOR UPDATE SKIP LOCKED\nMáx. 3 crash retries automáticos"]
+            Worker["Polling PostgreSQL cada ~5 s\nFOR UPDATE SKIP LOCKED\nMáx. 3 crash retries automáticos"]:::worker
         end
 
         subgraph DB["Persistencia"]
-            PG[("PostgreSQL 17 + pgvector\n:5432\nusers · manuals · manual_chunks\nchat_history · audit_log · settings")]
-            MinIO[("MinIO\n:9000  /  :9001 console\nObject Storage S3-compatible\nPDFs originales")]
+            PG[("PostgreSQL 17 + pgvector\n:5432\nusers · manuals · manual_chunks\nchat_history · audit_log · settings")]:::data
+            MinIO[("MinIO\n:9000  /  :9001 console\nObject Storage S3-compatible\nPDFs originales")]:::data
         end
     end
 
-    Gemini(["☁️ Google Gemini API\ngemini-3.5-flash\ngemini-embedding-2 (3072-dim)"])
+    Gemini(["☁️ Google Gemini API\ngemini-3.5-flash\ngemini-embedding-2 (3072-dim)"]):::external
 
     Browser -->|HTTPS| Nginx
     Nginx -->|proxy :3000| NextJS
@@ -48,6 +49,19 @@ flowchart TB
     Worker -->|"download PDF"| MinIO
     Worker -->|"semantic review · embed_content"| Gemini
     Worker -->|"INSERT manual_chunks\nvector(3072) embeddings"| PG
+
+    classDef client fill:#0f172a,stroke:#e2e8f0,stroke-width:2px,color:#f1f5f9
+    classDef frontend fill:#0b3d5c,stroke:#38bdf8,stroke-width:2px,color:#e0f2fe
+    classDef backend fill:#0f3d2e,stroke:#34d399,stroke-width:2px,color:#d1fae5
+    classDef worker fill:#4a2f0a,stroke:#fbbf24,stroke-width:2px,color:#fef3c7
+    classDef data fill:#2e1065,stroke:#a78bfa,stroke-width:2px,color:#ede9fe
+    classDef external fill:#4a1535,stroke:#f472b6,stroke-width:2px,color:#fce7f3
+    classDef prod fill:#1e293b,stroke:#94a3b8,stroke-width:2px,color:#cbd5e1,stroke-dasharray:5 3
+    style DockerStack fill:#0b1220,stroke:#334155,color:#94a3b8
+    style FE fill:#0c2a3f,stroke:#1e4e6b,color:#bae6fd
+    style BE fill:#0b261c,stroke:#1f6f52,color:#86efac
+    style WK fill:#2a1c08,stroke:#7a5a16,color:#fcd34d
+    style DB fill:#160c2e,stroke:#5b3aa6,color:#c4b5fd
 ```
 
 > **Nginx solo existe en producción** (`docker-compose.prod.yml`, TLS + reverse proxy).
@@ -57,34 +71,44 @@ flowchart TB
 ### Pipelines — Ingestión y RAG
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'14px','lineColor':'#94a3b8'},'flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':45}}}%%
 flowchart LR
     subgraph Ingest["⚙️  Pipeline de Ingestión  —  Worker"]
         direction TB
-        I1(["Admin\nPOST /api/v1/manuals/"])
-        I2["MinIO upload PDF\nPostgreSQL  status = pending"]
-        I3["Worker\nFOR UPDATE SKIP LOCKED\nstatus = processing"]
-        I4["pypdf\nextract_pdf_text_by_page()"]
-        I5["build_text_chunks()\nchunking semántico"]
-        I6["GeminiSemanticReviewer\nrevisión de TODOS los chunks (sin muestreo)\ncoherence · completeness · boundary"]
-        I7["gemini-embedding-2\nbatch · 3072 dimensiones"]
-        I8[("manual_chunks\nstatus = indexed")]
+        I1(["Admin\nPOST /api/v1/manuals/"]):::io
+        I2["MinIO upload PDF\nPostgreSQL  status = pending"]:::process
+        I3["Worker\nFOR UPDATE SKIP LOCKED\nstatus = processing"]:::process
+        I4["pypdf\nextract_pdf_text_by_page()"]:::process
+        I5["build_text_chunks()\nchunking semántico"]:::process
+        I6["GeminiSemanticReviewer\nrevisión de TODOS los chunks (sin muestreo)\ncoherence · completeness · boundary"]:::gemini
+        I7["gemini-embedding-2\nbatch · 3072 dimensiones"]:::gemini
+        I8[("manual_chunks\nstatus = indexed")]:::data
 
         I1 --> I2 --> I3 --> I4 --> I5 --> I6 --> I7 --> I8
     end
 
     subgraph RAG["💬  Pipeline RAG  —  POST /api/v1/chat/generate"]
         direction TB
-        R1(["Usuario\nprompt + código PAC actual"])
-        R2["Fase 1 — HyDE\nGemini · respuesta hipotética\n(sin contexto documental)"]
-        R3["Fase 2 — Retrieval\nembed(prompt + HyDE)\npgvector &lt;=&gt; (HNSW halfvec)\nre-rank por hardware + categoría · top-k"]
-        R4["Fase 3 — Contexto\nconstrucción con presupuesto de chars\nsource_map con IDs S1…Sn (trazabilidad)"]
-        R5["Fase 4 — Respuesta final\nGemini + contexto RAG\nJSON: summary · pac_code · references (IDs citados)"]
-        R6(["SSE Streaming\nevents: chunk → done\nkeepalive cada 15 s"])
+        R1(["Usuario\nprompt + código PAC actual"]):::io
+        R2["Fase 1 — HyDE\nGemini · respuesta hipotética\n(sin contexto documental)"]:::phase
+        R3["Fase 2 — Retrieval\nembed(prompt + HyDE)\npgvector &lt;=&gt; (HNSW halfvec)\nre-rank por hardware + categoría · top-k"]:::data
+        R4["Fase 3 — Contexto\nconstrucción con presupuesto de chars\nsource_map con IDs S1…Sn (trazabilidad)"]:::phase
+        R5["Fase 4 — Respuesta final\nGemini + contexto RAG\nJSON: summary · pac_code · references (IDs citados)"]:::phase
+        R6(["SSE Streaming\nevents: chunk → done\nkeepalive cada 15 s"]):::ok
 
         R1 --> R2 --> R3 --> R4 --> R5 --> R6
     end
 
     I8 --->|"similitud coseno\npgvector"| R3
+
+    classDef io fill:#0f172a,stroke:#e2e8f0,stroke-width:2px,color:#f1f5f9
+    classDef process fill:#1e293b,stroke:#64748b,stroke-width:2px,color:#e2e8f0
+    classDef gemini fill:#4a1535,stroke:#f472b6,stroke-width:2px,color:#fce7f3
+    classDef data fill:#2e1065,stroke:#a78bfa,stroke-width:2px,color:#ede9fe
+    classDef phase fill:#0b3d5c,stroke:#38bdf8,stroke-width:2px,color:#e0f2fe
+    classDef ok fill:#052e16,stroke:#4ade80,stroke-width:2px,color:#dcfce7
+    style Ingest fill:#160c04,stroke:#7a5a16,color:#fcd34d
+    style RAG fill:#0c1f2e,stroke:#1e5a7a,color:#93c5fd
 ```
 
 | Componente | Directorio | Responsabilidad |
