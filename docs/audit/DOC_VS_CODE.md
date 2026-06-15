@@ -18,7 +18,7 @@
 
 | Afirmación previa | Realidad en el código | Fuente | Estado |
 |---|---|---|---|
-| Columna `embedding REAL[]` | `embedding vector(3072)` (pgvector) | [api manual_chunk.py](../../apps/api/src/db/models/manual_chunk.py), [worker types.py](../../apps/worker/src/db/types.py) | Corregido |
+| Columna `embedding REAL[]` | `embedding vector(3072)` (pgvector) | [api manual_chunk.py](../../packages/rc7_shared_db/rc7_shared_db/models/manual_chunk.py), [worker types.py](../../packages/rc7_shared_db/rc7_shared_db/types.py) | Corregido |
 | Similitud coseno calculada en Python sobre `LIMIT 5000` | Distancia coseno `<=>` en Postgres con índice HNSW; pool top-50 re-rankeado en Python | [chat/service.py `_retrieve_chunks`](../../apps/api/src/services/chat/service.py) | Corregido |
 | Boost solo por categoría documental | `score = similitud · hardware_factor · category_factor` (filtro por config del robot) | [chat/service.py `_hardware_compatibility_boost`](../../apps/api/src/services/chat/service.py) | Corregido |
 | Índice HNSW pendiente / opcional | Índice HNSW creado sobre cast `halfvec(3072)` (límite de 2000 dims en `vector`) | [db/init.py `ensure_chunk_embedding_column`](../../apps/api/src/db/init.py) | Corregido |

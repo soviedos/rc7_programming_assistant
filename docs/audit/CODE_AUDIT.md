@@ -69,7 +69,7 @@ que el timeout es por entorno.
 
 ### O2 — Modelo `Manual` del worker sin `sha256` · `apps/worker/src/db/models/manual.py` · **baja** · no cambia comportamiento → propuesta
 La tabla `manuals` tiene columna `sha256` (definida en el modelo del API
-[apps/api/src/db/models/manual.py:21](../../apps/api/src/db/models/manual.py#L21) y creada por
+[packages/rc7_shared_db/rc7_shared_db/models/manual.py:21](../../packages/rc7_shared_db/rc7_shared_db/models/manual.py#L21) y creada por
 `init.py`). El modelo del worker **no** declara `sha256`, dando dos vistas ORM divergentes de la
 misma tabla. No es un bug (el worker no usa esa columna) pero es inconsistente. Propuesta: añadir la
 columna al modelo del worker por paridad, o documentar la divergencia.
