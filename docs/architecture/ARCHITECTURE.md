@@ -33,7 +33,8 @@ flowchart TB
     API -->|SQLAlchemy| PG
     API -->|upload/download/delete| MinIO
     API -->|"HyDE · embed · generación (SDK)"| Gemini
-    Worker -->|"claim/insert chunks"| PG
+    PG -.->|"poll · claim manual pendiente\n(FOR UPDATE SKIP LOCKED)"| Worker
+    Worker -->|"INSERT chunks + reviews"| PG
     Worker -->|download PDF| MinIO
     Worker -->|"review + embed (SDK)"| Gemini
 

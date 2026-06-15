@@ -45,7 +45,7 @@ flowchart TB
     FastAPI -->|"SQLAlchemy ORM"| PG
     FastAPI -->|"upload / presigned URL"| MinIO
     FastAPI -->|"HyDE · SSE streaming"| Gemini
-    Worker -->|"SELECT FOR UPDATE SKIP LOCKED"| PG
+    PG -.->|"poll · reclama manual pendiente\nFOR UPDATE SKIP LOCKED"| Worker
     Worker -->|"download PDF"| MinIO
     Worker -->|"semantic review · embed_content"| Gemini
     Worker -->|"INSERT manual_chunks\nvector(3072) embeddings"| PG
