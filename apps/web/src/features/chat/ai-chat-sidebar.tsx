@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Bot, PanelRightClose, BookOpen, ChevronDown, ChevronUp } from "lucide-react";
+import { Bot, PanelRightClose, BookOpen, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -18,6 +18,8 @@ export type Message = {
   content: string;
   code?: string;
   references?: MessageReference[];
+  // Level-2 semantic advisories (each string already carries its line number).
+  advisories?: string[];
   timestamp: Date;
   isError?: boolean;
   isStreaming?: boolean;
@@ -261,6 +263,25 @@ export function AiChatSidebar({
                           <span className="text-info/90">
                             — {ref.title}, pág. {ref.page}
                           </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Advisories — level-2 semantic warnings (read-only). Warning
+                      style, distinct from the informative Fuentes block. */}
+                  {!msg.isStreaming && msg.advisories && msg.advisories.length > 0 && (
+                    <div className="pl-3 pt-1 space-y-1.5">
+                      <p className="text-[9px] text-warning uppercase tracking-wide font-semibold flex items-center gap-1">
+                        <AlertTriangle className="h-2.5 w-2.5" />
+                        Advertencias
+                      </p>
+                      {msg.advisories.map((advisory, i) => (
+                        <div
+                          key={i}
+                          className="text-[10px] px-2 py-1.5 rounded-md bg-warning/10 border border-warning/25 text-warning leading-relaxed"
+                        >
+                          {advisory}
                         </div>
                       ))}
                     </div>

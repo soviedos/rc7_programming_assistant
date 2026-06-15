@@ -65,6 +65,48 @@ describe("AiChatSidebar — source legend", () => {
   });
 });
 
+describe("AiChatSidebar — advisories", () => {
+  function renderSidebar(messages: Message[]) {
+    return render(
+      <AiChatSidebar
+        isOpen
+        onToggle={() => {}}
+        messages={messages}
+        history={[]}
+        onHistoryItemClick={() => {}}
+        onHistoryRefresh={() => {}}
+      />,
+    );
+  }
+
+  const ADVISORIES = [
+    "Línea 3: movimiento de paso (@P) inmediatamente antes de actuar una salida; usa @0.",
+  ];
+
+  it("renders a warning block when the message has advisories", () => {
+    renderSidebar([assistantMessage({ advisories: ADVISORIES })]);
+    expect(screen.getByText("Advertencias")).toBeInTheDocument();
+    expect(screen.getByText(/Línea 3: movimiento de paso/)).toBeInTheDocument();
+  });
+
+  it("shows no advisories block when the list is empty", () => {
+    renderSidebar([assistantMessage({ advisories: [] })]);
+    expect(screen.queryByText("Advertencias")).toBeNull();
+  });
+
+  it("shows no advisories block when undefined", () => {
+    renderSidebar([assistantMessage({ advisories: undefined })]);
+    expect(screen.queryByText("Advertencias")).toBeNull();
+  });
+
+  it("shows no advisories while the message is still streaming", () => {
+    renderSidebar([
+      assistantMessage({ advisories: ADVISORIES, isStreaming: true, content: "" }),
+    ]);
+    expect(screen.queryByText("Advertencias")).toBeNull();
+  });
+});
+
 describe("CanvasPanel code — ' fuente: SX highlighting", () => {
   function renderCanvas(messages: Message[]) {
     return render(

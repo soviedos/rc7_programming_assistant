@@ -79,6 +79,7 @@ export default function ChatPage() {
                 title: r.title,
                 page: r.page,
               })),
+              advisories: evt.advisories ?? [],
               timestamp: new Date(),
             };
             return hasPlaceholder
@@ -146,6 +147,7 @@ export default function ChatPage() {
         title: r.title,
         page: r.page,
       })),
+      advisories: item.advisories ?? [],
       timestamp: new Date(item.created_at),
     };
     setMessages([userMsg, assistantMsg]);

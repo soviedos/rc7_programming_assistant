@@ -149,3 +149,35 @@ def test_chat_history_persists_and_returns_source_id(
         {"source_id": "S1", "title": "Programmer Manual", "page": "12"},
         {"source_id": "S2", "title": "Startup Guide", "page": "45"},
     ]
+
+
+def test_chat_history_recomputes_advisories_from_pac_code(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    """History derives level-2 advisories deterministically from stored pac_code."""
+    user = create_user(
+        db_session, email="adv@test.com", password="Advis1234", roles=["user"]
+    )
+    login(client, "adv@test.com", "Advis1234")
+
+    # Step motion (@P) immediately before actuating an output → 1 advisory.
+    db_session.add(
+        ChatHistory(
+            user_id=user.id,
+            prompt="recoge la pieza",
+            summary="Programa generado.",
+            pac_code="PROGRAM p\n    MOVE P, @P P[pPick]\n    SET IO[ioGrip]\nEND",
+            references=[],
+            robot_config={},
+            entry_type="code",
+        )
+    )
+    db_session.commit()
+
+    resp = client.get("/api/v1/chat/history")
+    assert resp.status_code == 200
+    advisories = resp.json()["items"][0]["advisories"]
+    assert len(advisories) == 1
+    assert advisories[0].startswith("Línea 2:")  # the MOVE @P line in stored code
+    assert "movimiento de paso" in advisories[0]

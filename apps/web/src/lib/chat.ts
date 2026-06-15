@@ -29,6 +29,7 @@ export type ChatApiResponse = {
   summary: string;
   pac_code: string;
   references: ChatApiReference[];
+  advisories: string[];
 };
 
 // ── Helper: map frontend ChatConfig → API request body ────────────
@@ -78,6 +79,7 @@ export type SSEDoneEvent = {
   summary: string;
   pac_code: string;
   references: ChatApiReference[];
+  advisories: string[];
 };
 export type SSEErrorEvent = { type: "error"; message: string };
 export type SSEEvent = SSEChunkEvent | SSEDoneEvent | SSEErrorEvent;
@@ -153,6 +155,7 @@ export type ChatHistoryItem = {
   summary: string;
   pac_code: string;
   references: ChatApiReference[];
+  advisories: string[];
   robot_config: Record<string, unknown>;
   entry_type: "code" | "troubleshooting";
   created_at: string;
