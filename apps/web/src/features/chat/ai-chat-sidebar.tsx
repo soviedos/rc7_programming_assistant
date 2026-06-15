@@ -7,8 +7,9 @@ import { cn } from "@/lib/utils";
 // ── Types ──────────────────────────────────────────────────────────
 
 export type MessageReference = {
-  manual: string;
-  section?: string;
+  sourceId: string; // traceability ID shown in the code, e.g. "S2"
+  title: string;
+  page: string;
 };
 
 export type Message = {
@@ -241,22 +242,25 @@ export function AiChatSidebar({
                     </div>
                   )}
 
-                  {/* Sources */}
+                  {/* Sources legend — decodes the ' fuente: SX tokens in the code.
+                      Only the data in `references` is used (no model call). */}
                   {!msg.isStreaming && msg.references && msg.references.length > 0 && (
                     <div className="pl-3 pt-1 space-y-1.5">
                       <p className="text-[9px] text-muted uppercase tracking-wide font-semibold flex items-center gap-1">
                         <BookOpen className="h-2.5 w-2.5" />
-                        Fuentes consultadas
+                        Fuentes
                       </p>
-                      {msg.references.map((ref, i) => (
+                      {msg.references.map((ref) => (
                         <div
-                          key={i}
-                          className="text-[10px] px-2 py-1.5 rounded-md bg-info/8 border border-info/15 text-info"
+                          key={ref.sourceId}
+                          className="text-[10px] px-2 py-1.5 rounded-md bg-info/8 border border-info/15 text-info flex items-baseline gap-1.5"
                         >
-                          <span className="font-medium">{ref.manual}</span>
-                          {ref.section && (
-                            <span className="text-info/70"> · {ref.section}</span>
-                          )}
+                          <span className="font-mono font-semibold shrink-0">
+                            {ref.sourceId}
+                          </span>
+                          <span className="text-info/90">
+                            — {ref.title}, pág. {ref.page}
+                          </span>
                         </div>
                       ))}
                     </div>

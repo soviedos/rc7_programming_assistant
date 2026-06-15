@@ -20,6 +20,7 @@ export type ChatApiRequest = {
 };
 
 export type ChatApiReference = {
+  source_id: string;
   title: string;
   page: string;
 };

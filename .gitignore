@@ -29,3 +29,6 @@ apps/api/logs/
 
 # Claude Code local tooling state
 .claude/
+
+# TypeScript incremental build info
+*.tsbuildinfo

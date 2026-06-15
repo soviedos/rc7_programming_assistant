@@ -75,8 +75,9 @@ export default function ChatPage() {
               content: evt.summary,
               code: evt.pac_code || undefined,
               references: evt.references.map((r) => ({
-                manual: r.title,
-                section: r.page,
+                sourceId: r.source_id,
+                title: r.title,
+                page: r.page,
               })),
               timestamp: new Date(),
             };
@@ -141,8 +142,9 @@ export default function ChatPage() {
       content: item.summary,
       code: item.pac_code ?? undefined,
       references: item.references.map((r) => ({
-        manual: r.title,
-        section: r.page,
+        sourceId: r.source_id,
+        title: r.title,
+        page: r.page,
       })),
       timestamp: new Date(item.created_at),
     };

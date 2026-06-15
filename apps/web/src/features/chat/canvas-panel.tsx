@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, FormEvent } from "react";
+import { useState, useRef, FormEvent, type ReactNode } from "react";
 import {
   Code2,
   AlertTriangle,
@@ -16,7 +16,44 @@ import {
 import { cn } from "@/lib/utils";
 import { ROBOT_SPECS, CONTROLLERS } from "./history-sidebar";
 import type { ChatConfig } from "./chat-panel";
-import type { Message } from "./ai-chat-sidebar";
+import type { Message, MessageReference } from "./ai-chat-sidebar";
+
+// Highlight every inline `' fuente: SX` comment in the PAC code, decoding SX to
+// its (manual, page) from `references` on hover. Uses only `references` data.
+const SOURCE_TOKEN = /' fuente:\s*(S\d+)/g;
+
+function renderCodeWithSources(
+  code: string,
+  references: MessageReference[],
+): ReactNode[] {
+  const refMap = new Map(references.map((r) => [r.sourceId, r]));
+  const parts: ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  for (const m of code.matchAll(SOURCE_TOKEN)) {
+    const start = m.index ?? 0;
+    if (start > last) parts.push(code.slice(last, start));
+    const sid = m[1];
+    const ref = refMap.get(sid);
+    parts.push(
+      <span
+        key={key++}
+        data-source-id={sid}
+        title={
+          ref
+            ? `${sid} — ${ref.title}, pág. ${ref.page}`
+            : `${sid} — fuente no disponible`
+        }
+        className="rounded-sm bg-info/15 text-info px-0.5 cursor-help"
+      >
+        {m[0]}
+      </span>,
+    );
+    last = start + m[0].length;
+  }
+  if (last < code.length) parts.push(code.slice(last));
+  return parts;
+}
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -37,9 +74,11 @@ const MODES: {
 function CodeCanvas({ messages }: { messages: Message[] }) {
   const [copied, setCopied] = useState(false);
 
-  const latestCode = [...messages]
+  const latestCodeMsg = [...messages]
     .reverse()
-    .find((m) => m.role === "assistant" && m.code)?.code;
+    .find((m) => m.role === "assistant" && m.code);
+  const latestCode = latestCodeMsg?.code;
+  const references = latestCodeMsg?.references ?? [];
 
   function handleCopy() {
     if (!latestCode) return;
@@ -111,7 +150,7 @@ function CodeCanvas({ messages }: { messages: Message[] }) {
       {/* Code */}
       <div className="flex-1 overflow-auto bg-bg">
         <pre className="p-6 text-sm font-mono leading-relaxed text-ink whitespace-pre">
-          {latestCode}
+          {renderCodeWithSources(latestCode, references)}
         </pre>
       </div>
     </div>
@@ -158,16 +197,17 @@ function TroubleshootingCanvas({ messages }: { messages: Message[] }) {
               {msg.content}
             </div>
 
-            {/* Sources */}
+            {/* Sources legend */}
             {msg.references && msg.references.length > 0 && (
               <div className="flex flex-wrap gap-1.5 pt-1">
-                {msg.references.map((ref, j) => (
+                {msg.references.map((ref) => (
                   <span
-                    key={j}
+                    key={ref.sourceId}
                     className="text-[10px] px-2 py-0.5 rounded-full bg-info/8 border border-info/15 text-info"
                   >
-                    {ref.manual}
-                    {ref.section && ` · ${ref.section}`}
+                    <span className="font-mono font-semibold">{ref.sourceId}</span>
+                    {" — "}
+                    {ref.title}, pág. {ref.page}
                   </span>
                 ))}
               </div>
