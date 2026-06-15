@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+import re
 import time
 from collections.abc import Iterator
+from dataclasses import dataclass
 
 from google import genai
 from google.genai import types
@@ -15,6 +18,8 @@ from src.api.v1.schemas.chat import ChatRequest, ChatResponse, ReferenceItem
 from src.core.config import settings
 from src.db.models import Manual, ManualChunk
 from src.services.settings.service import _DEFAULT_PAC_RULES, get_setting_value
+
+_logger = logging.getLogger(__name__)
 
 # Model names and embedding dim are centralised in config (env-overridable).
 _EMBED_MODEL = settings.gemini_embed_model
@@ -127,6 +132,68 @@ def _prepend_source_legend(
     block += [f"' {sid} = {title}, pág. {page}" for sid, title, page in legend]
     block.append("' ──────────────────────────────")
     return "\n".join(block) + "\n" + pac_code
+
+
+# ── Deterministic post-generation PAC linter ───────────────────────
+#
+# High-confidence, no-LLM fixes applied to pac_code before returning. Rules are
+# anchored to a whole line so they only rewrite *statements*, never the same
+# pattern inside a condition (IF ... = ON THEN, WAIT ... = ON). Indentation and
+# the inline ``' fuente: SX`` comment are preserved. Extend ``_PAC_LINT_RULES``
+# to add more patterns from the error taxonomy.
+
+
+@dataclass(frozen=True)
+class _PacLintRule:
+    name: str
+    pattern: re.Pattern[str]
+    replacement: str  # may reference named groups via \g<name>
+
+
+_PAC_LINT_RULES: list[_PacLintRule] = [
+    # IO[x] = ON   (statement)  →  SET IO[x]
+    _PacLintRule(
+        name="io_assign_on_to_set",
+        pattern=re.compile(
+            r"^(?P<indent>[ \t]*)IO\[(?P<idx>[^\]]+)\][ \t]*=[ \t]*ON"
+            r"(?P<comment>[ \t]+'.*)?[ \t]*$"
+        ),
+        replacement=r"\g<indent>SET IO[\g<idx>]\g<comment>",
+    ),
+    # IO[x] = OFF  (statement)  →  RESET IO[x]
+    _PacLintRule(
+        name="io_assign_off_to_reset",
+        pattern=re.compile(
+            r"^(?P<indent>[ \t]*)IO\[(?P<idx>[^\]]+)\][ \t]*=[ \t]*OFF"
+            r"(?P<comment>[ \t]+'.*)?[ \t]*$"
+        ),
+        replacement=r"\g<indent>RESET IO[\g<idx>]\g<comment>",
+    ),
+]
+
+
+def _lint_pac_code(pac_code: str) -> tuple[str, int]:
+    """Apply deterministic high-confidence PAC fixes line by line.
+
+    Returns ``(fixed_code, n_fixes)``. Each rule is line-anchored, so only whole
+    statements are rewritten; an identical pattern embedded in an ``IF``/``WAIT``
+    condition is left untouched. Indentation and any trailing ``' fuente: SX``
+    comment are preserved.
+    """
+    if not pac_code:
+        return pac_code, 0
+
+    fixed: list[str] = []
+    applied = 0
+    for line in pac_code.split("\n"):
+        for rule in _PAC_LINT_RULES:
+            new_line, n = rule.pattern.subn(rule.replacement, line)
+            if n:
+                line = new_line
+                applied += n
+                break  # at most one statement-level rule matches a given line
+        fixed.append(line)
+    return "\n".join(fixed), applied
 
 
 def _normalize_hw(value: str | None) -> str:
@@ -591,6 +658,11 @@ def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
     summary = str(data.get("summary", "")).strip()
     pac_code = str(data.get("pac_code", "")).strip()
 
+    # Deterministic post-generation fixes (no LLM) before returning.
+    pac_code, lint_fixes = _lint_pac_code(pac_code)
+    if lint_fixes:
+        _logger.info("PAC linter aplicó %d corrección(es) determinista(s)", lint_fixes)
+
     references = [
         ReferenceItem(source_id=sid, title=title, page=page)
         for sid, title, page in _resolve_references(source_map)
@@ -670,6 +742,11 @@ def stream_rag_response(
 
     summary = str(data.get("summary", "")).strip()
     pac_code = str(data.get("pac_code", "")).strip()
+
+    # Deterministic post-generation fixes (no LLM) before returning.
+    pac_code, lint_fixes = _lint_pac_code(pac_code)
+    if lint_fixes:
+        _logger.info("PAC linter aplicó %d corrección(es) determinista(s)", lint_fixes)
 
     references = [
         {"source_id": sid, "title": title, "page": page}
