@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from functools import lru_cache
 
 from google import genai
 from google.genai import types
@@ -17,7 +19,11 @@ from sqlalchemy.orm import Session
 from src.api.v1.schemas.chat import ChatRequest, ChatResponse, ReferenceItem
 from src.core.config import settings
 from src.db.models import Manual, ManualChunk
-from src.services.settings.service import _DEFAULT_PAC_RULES, get_setting_value
+from src.services.settings.service import (
+    _DEFAULT_PAC_RULES,
+    DEFAULT_SETTINGS,
+    get_setting_value,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -26,17 +32,17 @@ _EMBED_MODEL = settings.gemini_embed_model
 _EMBED_DIM = settings.gemini_embed_dim
 _GEN_MODEL = settings.gemini_gen_model
 
-# Fallback constants — used when DB settings are unavailable.
-_TOP_K = 6
-_MAX_CTX_CHARS = 12_000
-_TEMPERATURE = 0.7
-_MAX_TOKENS = 8192
+# Fallback constants — used when DB settings are unavailable. Derived from the
+# settings catalogue so the value has a single source.
+_TOP_K = int(DEFAULT_SETTINGS["rag_top_k_chunks"][0])
+_MAX_CTX_CHARS = int(DEFAULT_SETTINGS["rag_context_budget_chars"][0])
+_TEMPERATURE = float(DEFAULT_SETTINGS["gemini_temperature"][0])
+_MAX_TOKENS = int(DEFAULT_SETTINGS["gemini_max_tokens"][0])
 
-# Default number of nearest neighbours to pull from pgvector before applying the
-# category/hardware re-ranking in Python (overridable via the rag_candidate_pool
-# setting). Wider than _TOP_K so the boost can promote relevant chunks that are
-# not the very closest by raw cosine.
-_VECTOR_CANDIDATE_POOL = 50
+# Number of nearest neighbours pulled from pgvector before the category/hardware
+# re-ranking in Python. Wider than _TOP_K so the boost can promote relevant
+# chunks that are not the very closest by raw cosine.
+_VECTOR_CANDIDATE_POOL = int(DEFAULT_SETTINGS["rag_candidate_pool"][0])
 
 # Category boost multipliers applied to cosine similarity scores.
 # A value of 1.0 means no boost; >1.0 promotes chunks from that category.
@@ -61,16 +67,23 @@ _HW_CONTROLLER_MISMATCH_PENALTY = 0.85
 # ── Helpers ────────────────────────────────────────────────────────
 
 
-def _get_client(timeout_seconds: int | None = None) -> genai.Client:
-    timeout = (
-        timeout_seconds if timeout_seconds is not None else settings.gemini_timeout_seconds
-    )
+@lru_cache(maxsize=8)
+def _build_client(timeout_seconds: int) -> genai.Client:
     return genai.Client(
         api_key=settings.gemini_api_key,
         http_options=types.HttpOptions(
-            timeout=timeout * 1000,  # SDK expects ms
+            timeout=timeout_seconds * 1000,  # SDK expects ms
         ),
     )
+
+
+def _get_client(timeout_seconds: int | None = None) -> genai.Client:
+    # Cached per timeout: a fresh Client per call would discard the underlying
+    # httpx connection pool and force a TLS handshake on every Gemini request.
+    timeout = (
+        timeout_seconds if timeout_seconds is not None else settings.gemini_timeout_seconds
+    )
+    return _build_client(timeout)
 
 
 def _embed_query(text_input: str, timeout_seconds: int | None = None) -> list[float]:
@@ -415,7 +428,6 @@ _INSTALL_TYPE_LABELS = {
 
 
 def _build_system_prompt(db: Session, payload: ChatRequest) -> str:
-    io_expansion_line = ""
     if payload.has_io_expansion:
         io_expansion_line = (
             f"- Tarjeta expansión I/O: Sí "
@@ -482,9 +494,6 @@ def _build_user_message(payload: ChatRequest, context_chunks: list[str]) -> str:
 
 def _parse_gemini_json(raw: str) -> dict:
     """Extract the JSON object from the raw Gemini response text."""
-    import json
-    import re
-
     # Strip possible markdown fences
     cleaned = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.MULTILINE)
     cleaned = re.sub(r"\s*```$", "", cleaned.strip(), flags=re.MULTILINE)
@@ -613,6 +622,69 @@ _NO_RAG_NOTE = (
 # ── Shared RAG phases 1-3 ─────────────────────────────────────────
 
 
+@dataclass(frozen=True)
+class _ChatParams:
+    top_k: int
+    max_ctx: int
+    temperature: float
+    max_tokens: int
+    timeout_seconds: int
+    candidate_pool: int
+
+
+def _load_chat_params(db: Session) -> _ChatParams:
+    return _ChatParams(
+        top_k=int(get_setting_value(db, "rag_top_k_chunks", str(_TOP_K))),
+        max_ctx=int(
+            get_setting_value(db, "rag_context_budget_chars", str(_MAX_CTX_CHARS))
+        ),
+        temperature=float(
+            get_setting_value(db, "gemini_temperature", str(_TEMPERATURE))
+        ),
+        max_tokens=int(get_setting_value(db, "gemini_max_tokens", str(_MAX_TOKENS))),
+        timeout_seconds=int(
+            get_setting_value(
+                db, "gemini_timeout_seconds", str(settings.gemini_timeout_seconds)
+            )
+        ),
+        candidate_pool=int(
+            get_setting_value(db, "rag_candidate_pool", str(_VECTOR_CANDIDATE_POOL))
+        ),
+    )
+
+
+def _finalize_response(
+    raw_text: str,
+    source_map: dict[str, tuple[Manual, int]],
+) -> tuple[str, str, list[tuple[str, str, str]], list[str]]:
+    """Parse the Gemini payload and apply the deterministic post-generation steps.
+
+    Returns (summary, pac_code, references, advisories). ``references`` are raw
+    tuples so each caller can shape them for its own transport.
+    """
+    try:
+        data = _parse_gemini_json(raw_text)
+    except Exception:
+        data = {"summary": raw_text, "pac_code": "", "references": []}
+
+    summary = str(data.get("summary", "")).strip()
+    pac_code = str(data.get("pac_code", "")).strip()
+
+    pac_code, lint_fixes = _lint_pac_code(pac_code)
+    if lint_fixes:
+        _logger.info("PAC linter aplicó %d corrección(es) determinista(s)", lint_fixes)
+
+    references = _resolve_references(source_map)
+    # Make the .pac self-contained: prepend the deterministic source legend.
+    pac_code = _prepend_source_legend(pac_code, source_map)
+
+    advisories = _pac_advisories(pac_code)
+    if advisories:
+        _logger.info("PAC advisories: %d advertencia(s) semántica(s)", len(advisories))
+
+    return summary or "Respuesta generada.", pac_code, references, advisories
+
+
 def _run_rag_phases(
     db: Session,
     payload: ChatRequest,
@@ -623,10 +695,10 @@ def _run_rag_phases(
     max_tokens: int,
     timeout_seconds: int | None = None,
     candidate_pool: int = _VECTOR_CANDIDATE_POOL,
-) -> tuple[list[str], dict[str, tuple[Manual, int]], str, str]:
+) -> tuple[dict[str, tuple[Manual, int]], str, str]:
     """Run phases 1-3 of the RAG pipeline.
 
-    Returns a 4-tuple: (context_chunks, source_map, system_prompt, phase4_message).
+    Returns a 3-tuple: (source_map, system_prompt, phase4_message).
     ``source_map`` maps stable source IDs ("S1", "S2", …) to (manual, page).
     ``phase4_message`` is already built for Phase 4 (RAG context or fallback).
     """
@@ -681,7 +753,7 @@ def _run_rag_phases(
                 f"CONSULTA DEL USUARIO:\n{payload.prompt}"
             )
 
-    return context_chunks, source_map, system_prompt, phase4_message
+    return source_map, system_prompt, phase4_message
 
 
 # ── Public entry point ─────────────────────────────────────────────
@@ -695,71 +767,38 @@ def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
     Phase 3: Build RAG context from retrieved chunks.
     Phase 4: Final Gemini call with RAG context → structured JSON response.
     """
-    top_k = int(get_setting_value(db, "rag_top_k_chunks", str(_TOP_K)))
-    max_ctx = int(
-        get_setting_value(db, "rag_context_budget_chars", str(_MAX_CTX_CHARS))
-    )
-    temperature = float(get_setting_value(db, "gemini_temperature", str(_TEMPERATURE)))
-    max_tokens = int(get_setting_value(db, "gemini_max_tokens", str(_MAX_TOKENS)))
-    timeout_seconds = int(
-        get_setting_value(
-            db, "gemini_timeout_seconds", str(settings.gemini_timeout_seconds)
-        )
-    )
-    candidate_pool = int(
-        get_setting_value(db, "rag_candidate_pool", str(_VECTOR_CANDIDATE_POOL))
-    )
+    params = _load_chat_params(db)
 
-    _context_chunks, source_map, system_prompt, phase4_message = _run_rag_phases(
+    source_map, system_prompt, phase4_message = _run_rag_phases(
         db,
         payload,
-        top_k=top_k,
-        max_ctx=max_ctx,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        timeout_seconds=timeout_seconds,
-        candidate_pool=candidate_pool,
+        top_k=params.top_k,
+        max_ctx=params.max_ctx,
+        temperature=params.temperature,
+        max_tokens=params.max_tokens,
+        timeout_seconds=params.timeout_seconds,
+        candidate_pool=params.candidate_pool,
     )
 
     # ── Phase 4: Final structured call ────────────────────────────
     raw_text = _call_gemini(
         phase4_message,
         system_instruction=system_prompt,
-        temperature=temperature,
-        max_output_tokens=max_tokens,
+        temperature=params.temperature,
+        max_output_tokens=params.max_tokens,
         force_json=True,
-        timeout_seconds=timeout_seconds,
+        timeout_seconds=params.timeout_seconds,
     )
 
-    try:
-        data = _parse_gemini_json(raw_text)
-    except Exception:
-        data = {"summary": raw_text, "pac_code": "", "references": []}
-
-    summary = str(data.get("summary", "")).strip()
-    pac_code = str(data.get("pac_code", "")).strip()
-
-    # Deterministic post-generation fixes (no LLM) before returning.
-    pac_code, lint_fixes = _lint_pac_code(pac_code)
-    if lint_fixes:
-        _logger.info("PAC linter aplicó %d corrección(es) determinista(s)", lint_fixes)
-
-    references = [
-        ReferenceItem(source_id=sid, title=title, page=page)
-        for sid, title, page in _resolve_references(source_map)
-    ]
-    # Make the .pac self-contained: prepend the deterministic source legend.
-    pac_code = _prepend_source_legend(pac_code, source_map)
-
-    # Level-2 semantic advisories on the final code (read-only, shown to the user).
-    advisories = _pac_advisories(pac_code)
-    if advisories:
-        _logger.info("PAC advisories: %d advertencia(s) semántica(s)", len(advisories))
+    summary, pac_code, references, advisories = _finalize_response(raw_text, source_map)
 
     return ChatResponse(
-        summary=summary or "Respuesta generada.",
+        summary=summary,
         pac_code=pac_code,
-        references=references,
+        references=[
+            ReferenceItem(source_id=sid, title=title, page=page)
+            for sid, title, page in references
+        ],
         advisories=advisories,
     )
 
@@ -775,32 +814,17 @@ def stream_rag_response(
     and references.  Raises RuntimeError on pipeline failure (the caller is
     responsible for catching it and emitting an ``error`` event).
     """
-    import json
+    params = _load_chat_params(db)
 
-    top_k = int(get_setting_value(db, "rag_top_k_chunks", str(_TOP_K)))
-    max_ctx = int(
-        get_setting_value(db, "rag_context_budget_chars", str(_MAX_CTX_CHARS))
-    )
-    temperature = float(get_setting_value(db, "gemini_temperature", str(_TEMPERATURE)))
-    max_tokens = int(get_setting_value(db, "gemini_max_tokens", str(_MAX_TOKENS)))
-    timeout_seconds = int(
-        get_setting_value(
-            db, "gemini_timeout_seconds", str(settings.gemini_timeout_seconds)
-        )
-    )
-    candidate_pool = int(
-        get_setting_value(db, "rag_candidate_pool", str(_VECTOR_CANDIDATE_POOL))
-    )
-
-    _context_chunks, source_map, system_prompt, gemini_message = _run_rag_phases(
+    source_map, system_prompt, gemini_message = _run_rag_phases(
         db,
         payload,
-        top_k=top_k,
-        max_ctx=max_ctx,
-        temperature=temperature,
-        max_tokens=max_tokens,
-        timeout_seconds=timeout_seconds,
-        candidate_pool=candidate_pool,
+        top_k=params.top_k,
+        max_ctx=params.max_ctx,
+        temperature=params.temperature,
+        max_tokens=params.max_tokens,
+        timeout_seconds=params.timeout_seconds,
+        candidate_pool=params.candidate_pool,
     )
 
     # ── Phase 4: Stream final Gemini response ─────────────────────
@@ -810,10 +834,10 @@ def stream_rag_response(
     for chunk_text in _call_gemini_stream(
         gemini_message,
         system_instruction=system_prompt,
-        temperature=temperature,
-        max_output_tokens=max_tokens,
+        temperature=params.temperature,
+        max_output_tokens=params.max_tokens,
         force_json=True,
-        timeout_seconds=timeout_seconds,
+        timeout_seconds=params.timeout_seconds,
     ):
         full_text += chunk_text
         now = time.time()
@@ -822,29 +846,9 @@ def stream_rag_response(
             last_keepalive = now
         yield f"data: {json.dumps({'type': 'chunk', 'content': chunk_text})}\n\n"
 
-    try:
-        data = _parse_gemini_json(full_text)
-    except Exception:
-        data = {"summary": full_text, "pac_code": "", "references": []}
-
-    summary = str(data.get("summary", "")).strip()
-    pac_code = str(data.get("pac_code", "")).strip()
-
-    # Deterministic post-generation fixes (no LLM) before returning.
-    pac_code, lint_fixes = _lint_pac_code(pac_code)
-    if lint_fixes:
-        _logger.info("PAC linter aplicó %d corrección(es) determinista(s)", lint_fixes)
-
+    summary, pac_code, refs, advisories = _finalize_response(full_text, source_map)
     references = [
-        {"source_id": sid, "title": title, "page": page}
-        for sid, title, page in _resolve_references(source_map)
+        {"source_id": sid, "title": title, "page": page} for sid, title, page in refs
     ]
-    # Make the .pac self-contained: prepend the deterministic source legend.
-    pac_code = _prepend_source_legend(pac_code, source_map)
 
-    # Level-2 semantic advisories on the final code (read-only, shown to the user).
-    advisories = _pac_advisories(pac_code)
-    if advisories:
-        _logger.info("PAC advisories: %d advertencia(s) semántica(s)", len(advisories))
-
-    yield f"data: {json.dumps({'type': 'done', 'summary': summary or 'Respuesta generada.', 'pac_code': pac_code, 'references': references, 'advisories': advisories})}\n\n"
+    yield f"data: {json.dumps({'type': 'done', 'summary': summary, 'pac_code': pac_code, 'references': references, 'advisories': advisories})}\n\n"
