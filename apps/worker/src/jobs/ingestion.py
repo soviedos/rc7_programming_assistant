@@ -242,6 +242,22 @@ def index_manual_chunks(
         log("worker", f"No se generaron embeddings para manual #{manual.id}: {exc}")
         embeddings = [None] * len(chunks)  # type: ignore[list-item]
 
+    # A chunk without an embedding is invisible to the RAG search, so a manual
+    # with none is not indexed in any useful sense — fail it instead of marking
+    # it indexed and lying about it.
+    embedded_count = sum(1 for e in embeddings if e)
+    if not embedded_count:
+        raise ValueError(
+            "No se pudo generar ningun embedding: el manual quedaria invisible "
+            "para la busqueda. Revisa la conectividad con Gemini y reintenta."
+        )
+    if embedded_count < len(chunks):
+        log(
+            "worker",
+            f"Manual #{manual.id}: solo {embedded_count}/{len(chunks)} chunks "
+            "obtuvieron embedding. Los demas no seran recuperables por el RAG.",
+        )
+
     for chunk_index, chunk in enumerate(chunks):
         embedding = embeddings[chunk_index] if chunk_index < len(embeddings) else None
         session.add(
