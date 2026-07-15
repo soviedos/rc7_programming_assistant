@@ -6,12 +6,6 @@ export type ManualStatus = "pending" | "processing" | "indexed" | "failed";
 export type DocumentLanguage = "es" | "en";
 export type ManualCategory = "startup" | "programming" | "robot_specs" | "errors";
 
-export type AdminStatus = {
-  manualsIndexed: number;
-  activeUsers: number;
-  pendingJobs: number;
-};
-
 export type ManualDocument = {
   id: number;
   title: string;
@@ -81,12 +75,6 @@ export type StaleProcessingCleanupResult = {
 
 // ── API response shapes ────────────────────────────────────────────
 
-type AdminStatusApiResponse = {
-  manuals_indexed: number;
-  active_users: number;
-  pending_jobs: number;
-};
-
 type ManualApiResponse = {
   id: number;
   title: string;
@@ -149,14 +137,6 @@ type StaleProcessingCleanupApiResponse = {
 
 // ── Normalizers ────────────────────────────────────────────────────
 
-function normalizeAdminStatus(raw: AdminStatusApiResponse): AdminStatus {
-  return {
-    manualsIndexed: raw.manuals_indexed,
-    activeUsers: raw.active_users,
-    pendingJobs: raw.pending_jobs,
-  };
-}
-
 function normalizeManual(raw: ManualApiResponse): ManualDocument {
   return {
     id: raw.id,
@@ -209,14 +189,6 @@ function normalizeManualReviewSummary(
 }
 
 // ── API calls ──────────────────────────────────────────────────────
-
-export async function fetchAdminStatus(): Promise<AdminStatus> {
-  const raw = await api.get<AdminStatusApiResponse>(
-    "/api/v1/admin/status",
-    "No fue posible cargar el estado administrativo.",
-  );
-  return normalizeAdminStatus(raw);
-}
 
 export async function fetchManuals(): Promise<ManualDocument[]> {
   const raw = await api.get<ManualListApiResponse>(

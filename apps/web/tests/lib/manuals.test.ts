@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   deleteManual,
-  fetchAdminStatus,
   fetchManuals,
   fetchManualReviewSummaries,
   getManualOpenUrl,
@@ -18,30 +17,6 @@ describe("manuals helpers", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
-  });
-
-  it("loads and normalizes the admin status", async () => {
-    vi.mocked(fetch).mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          manuals_indexed: 6,
-          active_users: 4,
-          pending_jobs: 2,
-        }),
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "application/json",
-          },
-        },
-      ),
-    );
-
-    await expect(fetchAdminStatus()).resolves.toEqual({
-      manualsIndexed: 6,
-      activeUsers: 4,
-      pendingJobs: 2,
-    });
   });
 
   it("loads and normalizes the manuals list", async () => {

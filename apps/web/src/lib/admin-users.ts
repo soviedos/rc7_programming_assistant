@@ -1,6 +1,8 @@
 import { api } from "@/lib/api-client";
 
-export type UserRole = "admin" | "user";
+export type { UserRole } from "@/lib/auth";
+
+import type { UserRole } from "@/lib/auth";
 
 export type AdminUser = {
   id: number;

@@ -6,7 +6,6 @@ import { ManualsPanel } from "@/features/admin/manuals-panel";
 import {
   cleanupStaleProcessing,
   deleteManual,
-  fetchAdminStatus,
   fetchManuals,
   fetchManualReviewSummaries,
   getManualOpenUrl,
@@ -17,7 +16,6 @@ import {
 
 vi.mock("@/lib/manuals", () => ({
   cleanupStaleProcessing: vi.fn(),
-  fetchAdminStatus: vi.fn(),
   fetchManuals: vi.fn(),
   fetchManualReviewSummaries: vi.fn(),
   uploadManual: vi.fn(),
@@ -30,11 +28,6 @@ vi.mock("@/lib/manuals", () => ({
 describe("ManualsPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(fetchAdminStatus).mockResolvedValue({
-      manualsIndexed: 2,
-      activeUsers: 5,
-      pendingJobs: 1,
-    });
     vi.mocked(fetchManuals).mockResolvedValue([
       {
         id: 1,

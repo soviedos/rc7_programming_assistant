@@ -24,42 +24,22 @@ export type UpdateRolePermissionInput = {
   user: boolean;
 };
 
-type RolePermissionApiResponse = {
-  id: number;
-  key: string;
-  name: string;
-  description: string;
-  admin: boolean;
-  user: boolean;
-};
-
 type RolePermissionListApiResponse = {
-  items: RolePermissionApiResponse[];
+  items: RolePermission[];
 };
-
-function normalizePermission(raw: RolePermissionApiResponse): RolePermission {
-  return {
-    id: raw.id,
-    key: raw.key,
-    name: raw.name,
-    description: raw.description,
-    admin: raw.admin,
-    user: raw.user,
-  };
-}
 
 export async function fetchRolePermissions(): Promise<RolePermission[]> {
   const raw = await api.get<RolePermissionListApiResponse>(
     "/api/v1/admin/roles/permissions",
     "No fue posible cargar la matriz de permisos.",
   );
-  return raw.items.map(normalizePermission);
+  return raw.items;
 }
 
 export async function createRolePermission(
   input: CreateRolePermissionInput,
 ): Promise<RolePermission> {
-  const raw = await api.post<RolePermissionApiResponse>(
+  const raw = await api.post<RolePermission>(
     "/api/v1/admin/roles/permissions",
     {
       key: input.key.trim().toLowerCase(),
@@ -70,14 +50,14 @@ export async function createRolePermission(
     },
     "No fue posible crear el permiso.",
   );
-  return normalizePermission(raw);
+  return raw;
 }
 
 export async function updateRolePermission(
   permissionId: number,
   input: UpdateRolePermissionInput,
 ): Promise<RolePermission> {
-  const raw = await api.put<RolePermissionApiResponse>(
+  const raw = await api.put<RolePermission>(
     `/api/v1/admin/roles/permissions/${permissionId}`,
     {
       name: input.name.trim(),
@@ -87,7 +67,7 @@ export async function updateRolePermission(
     },
     "No fue posible actualizar el permiso.",
   );
-  return normalizePermission(raw);
+  return raw;
 }
 
 export async function deleteRolePermission(permissionId: number): Promise<void> {
