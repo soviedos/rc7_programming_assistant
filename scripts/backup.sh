@@ -9,7 +9,8 @@
 #   0 2 * * * cd /srv/rc7 && bash scripts/backup.sh >> logs/backup.log 2>&1
 #
 # Retention: keeps the 7 most recent backup directories (configurable via
-# BACKUP_KEEP_DAYS below).
+# BACKUP_KEEP_COUNT below). Note this is a count, not an age: two backups a day
+# with a count of 7 keeps 3.5 days' worth.
 #
 # Usage (from project root):
 #   bash scripts/backup.sh
@@ -22,7 +23,8 @@
 set -euo pipefail
 
 # ─── Configuration ────────────────────────────────────────────────────────────
-BACKUP_KEEP_DAYS="${BACKUP_KEEP_DAYS:-7}"
+# BACKUP_KEEP_DAYS is the old name for this: honoured so existing crontabs keep working.
+BACKUP_KEEP_COUNT="${BACKUP_KEEP_COUNT:-${BACKUP_KEEP_DAYS:-7}}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
 BACKUP_ROOT="$(pwd)/backups"
 TIMESTAMP="$(date '+%Y-%m-%d_%H-%M-%S')"
@@ -78,11 +80,11 @@ docker run --rm \
 MINIO_SIZE=$(du -sh "${BACKUP_DIR}/minio.tar.gz" | cut -f1)
 log "  MinIO archive: ${MINIO_SIZE} — OK"
 
-# ─── Retention — remove backups older than BACKUP_KEEP_DAYS ──────────────────
-log "▶ Applying retention policy (keep last ${BACKUP_KEEP_DAYS} days)..."
+# ─── Retention — keep the newest BACKUP_KEEP_COUNT directories ───────────────
+log "▶ Applying retention policy (keep last ${BACKUP_KEEP_COUNT} backups)..."
 
 _total=$(find "${BACKUP_ROOT}" -maxdepth 1 -type d -name "????-??-??_??-??-??" | wc -l | tr -d ' ')
-_to_remove=$(( _total - BACKUP_KEEP_DAYS ))
+_to_remove=$(( _total - BACKUP_KEEP_COUNT ))
 
 if [[ "${_to_remove}" -gt 0 ]]; then
   find "${BACKUP_ROOT}" -maxdepth 1 -type d \
@@ -94,7 +96,7 @@ if [[ "${_to_remove}" -gt 0 ]]; then
         rm -rf "${old_dir}"
       done
 else
-  log "  Nothing to remove (${_total} backup(s) found, keeping up to ${BACKUP_KEEP_DAYS})"
+  log "  Nothing to remove (${_total} backup(s) found, keeping up to ${BACKUP_KEEP_COUNT})"
 fi
 
 # ─── Summary ──────────────────────────────────────────────────────────────────

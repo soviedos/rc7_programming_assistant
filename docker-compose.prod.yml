@@ -6,7 +6,8 @@
 # Prerequisites:
 #   - .env file with all production values (see .env.prod.example)
 #   - infra/nginx/ssl/fullchain.pem and privkey.pem (TLS certificates)
-#   - logs/api/ and logs/worker/ directories (created by import-data.sh)
+# Los logs van a los volúmenes con nombre api_logs/worker_logs, que Docker crea
+# solo: no hay que preparar ningún directorio.
 
 services:
   nginx:
