@@ -12,7 +12,7 @@ class SettingRead(BaseModel):
 
 
 class SettingUpdate(BaseModel):
-    value: str = Field(min_length=0)
+    value: str
 
 
 class SettingsBulkEntry(BaseModel):

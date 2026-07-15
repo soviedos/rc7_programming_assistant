@@ -1,6 +1,10 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+HandType = Literal["pneumatic_single", "pneumatic_double", "electric", "none"]
+InstallType = Literal["floor", "ceiling", "wall"]
 
 
 class ChatRequest(BaseModel):
@@ -13,8 +17,8 @@ class ChatRequest(BaseModel):
     tool_number: int = 1
     max_speed_pct: int = 100
     # Extended sidebar fields
-    hand_type: str = "none"
-    install_type: str = "floor"
+    hand_type: HandType = "none"
+    install_type: InstallType = "floor"
     has_io_expansion: bool = False
     expansion_io_inputs: int = 0
     expansion_io_outputs: int = 0

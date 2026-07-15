@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import Text, cast, func, select
 
 from src.api.v1.deps import DbSession, get_current_admin_user
 from src.api.v1.schemas.admin import (
@@ -57,8 +57,6 @@ def serialize_role_permission(permission: RolePermission) -> RolePermissionRespo
 
 
 def count_active_admins(db_session: DbSession) -> int:
-    from sqlalchemy import cast, Text
-
     return (
         db_session.scalar(
             select(func.count(User.id))

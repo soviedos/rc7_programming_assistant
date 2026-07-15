@@ -55,6 +55,16 @@ def normalize_optional_text(value: str | None) -> str | None:
     return normalized or None
 
 
+def normalize_manual_title(value: str) -> str:
+    normalized = value.strip()
+    if len(normalized) < 3:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="El titulo del manual debe contener al menos 3 caracteres utiles.",
+        )
+    return normalized
+
+
 def get_manual_or_404(db_session: DbSession, manual_id: int) -> Manual:
     manual = db_session.get(Manual, manual_id)
     if not manual:
@@ -263,12 +273,7 @@ async def upload_manual(
     notes: Annotated[str | None, Form(max_length=1000)] = None,
     as_new_version: Annotated[bool, Form()] = False,
 ) -> ManualResponse:
-    normalized_title = title.strip()
-    if len(normalized_title) < 3:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="El titulo del manual debe contener al menos 3 caracteres utiles.",
-        )
+    normalized_title = normalize_manual_title(title)
 
     original_filename = (file.filename or "").strip()
     if not original_filename.lower().endswith(".pdf"):
@@ -365,14 +370,7 @@ async def update_manual(
 ) -> ManualResponse:
     manual = get_manual_or_404(db_session, manual_id)
 
-    normalized_title = payload.title.strip()
-    if len(normalized_title) < 3:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="El titulo del manual debe contener al menos 3 caracteres utiles.",
-        )
-
-    manual.title = normalized_title
+    manual.title = normalize_manual_title(payload.title)
     manual.notes = normalize_optional_text(payload.notes)
     manual.categories = payload.categories
 

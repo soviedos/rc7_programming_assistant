@@ -20,7 +20,7 @@ from src.services.chat.service import (
     generate_rag_response,
     stream_rag_response,
 )
-from src.services.settings.service import get_setting_value
+from src.services.settings.service import DEFAULT_SETTINGS, get_setting_value
 
 router = APIRouter()
 
@@ -63,7 +63,11 @@ def _save_history_and_prune(
     db.add(history_item)
     db.commit()
 
-    max_entries = int(get_setting_value(db, "history_max_entries", "50"))
+    max_entries = int(
+        get_setting_value(
+            db, "history_max_entries", DEFAULT_SETTINGS["history_max_entries"][0]
+        )
+    )
     keep_ids = (
         select(ChatHistory.id)
         .where(ChatHistory.user_id == user.id)
