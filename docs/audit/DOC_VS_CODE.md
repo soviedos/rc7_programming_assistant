@@ -82,3 +82,12 @@
 | El manual fallido guarda el detalle en `error_message` | La columna es `last_error` | [models/manual.py] | Corregido |
 | La mitigación del ADR cita una capa de "repositorios" | No existe: los servicios usan la sesión de SQLAlchemy directamente | [ADR-0001](../decisions/ADR-0001-monolithic-modular-architecture.md) | Corregido |
 | `packages/` contiene un solo paquete (`rc7_shared_db`) | Son dos: se añadió `rc7_shared_config` con `SharedSettings` y la validación de secretos | [packages/](../../packages/) | Corregido |
+
+## Chunking
+
+| Afirmación previa | Realidad en el código | Fuente | Estado |
+|---|---|---|---|
+| La etapa 2 es "chunking semántico" | Es **estructural**: parte por página, empaqueta párrafos (`\n\n`) hasta 1200 chars y, si un párrafo excede ese tope, lo corta a ciegas cada 1200 (puede partir palabras). No entiende el texto. Lo semántico es la etapa 3, que **repara** los cortes ya hechos | [chunking/text.py](../../apps/worker/src/chunking/text.py) | Corregido |
+| "Tamaño target y solapamiento configurables en código" | **No hay solapamiento**: los chunks son disjuntos. Y el tamaño (1200) es un default de parámetro que el worker nunca pasa: no existe ajuste ni en env ni en settings | [chunking/text.py:12](../../apps/worker/src/chunking/text.py#L12), [jobs/ingestion.py](../../apps/worker/src/jobs/ingestion.py) | Corregido |
+| "Cada chunk lleva: texto, página de inicio, página de fin" | `TextChunk` solo tiene `page_number` (una página) y `text`. Un chunk nunca cruza de página | [chunking/text.py:6](../../apps/worker/src/chunking/text.py#L6) | Corregido |
+| `SEMANTIC_REVIEW_MAX_CHARS=2200` filtra chunks demasiado largos | **Inerte**: ningún chunk supera los 1200 chars que impone build_text_chunks, así que la razón de selección `too_long` es inalcanzable. Verificado empíricamente | [semantic_review.py](../../apps/worker/src/services/semantic_review.py), [.env.example] | Documentado |

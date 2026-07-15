@@ -25,11 +25,13 @@ Admin → POST /api/v1/manuals/
     └─ Texto extraído por página con pypdf, preservando números de página
              │
              ▼
-    [Etapa 2] Chunking semántico
+    [Etapa 2] Chunking estructural  (NO semántico — lo semántico es la etapa 3)
     build_text_chunks()
-    ├─ Segmentación respetando párrafos naturales
-    ├─ Tamaño target y solapamiento configurables en código
-    └─ Cada chunk lleva: texto, página de inicio, página de fin
+    ├─ Página por página: un chunk NUNCA cruza de página
+    ├─ Empaqueta párrafos (\n\n) hasta 1200 chars — fijo en código, sin ajuste
+    ├─ Un párrafo > 1200 chars se corta a ciegas cada 1200 (puede partir palabras)
+    ├─ SIN solapamiento: los chunks son disjuntos
+    └─ Cada chunk lleva: texto y su número de página (uno solo)
              │
              ▼
     [Etapa 3] Revisión semántica con Gemini
@@ -98,6 +100,13 @@ Ver [docs/backend/settings-module.md](../backend/settings-module.md) para la tab
 ---
 
 ## Revisión semántica — detalles
+
+> **Dónde vive lo semántico.** El corte inicial (etapa 2) es mecánico: párrafos y un
+> presupuesto de 1200 chars, sin entender el texto. La comprensión entra **aquí**, en
+> la etapa 3: Gemini revisa los chunks ya cortados y repara los cortes malos. La
+> arquitectura es *cortar mecánicamente y reparar semánticamente*, no cortar con
+> criterio semántico desde el principio. Ejemplo real: un manual entró con 318 chunks
+> y salió con 230 tras 104 autofixes.
 
 La revisión semántica (`GeminiSemanticReviewer`) evalúa **todos los chunks generados**
 (con la configuración por defecto, sin muestreo) con Gemini para detectar problemas de
