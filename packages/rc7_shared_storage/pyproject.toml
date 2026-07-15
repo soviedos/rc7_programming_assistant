@@ -1,0 +1,17 @@
+[project]
+name = "rc7-shared-storage"
+version = "0.1.0"
+description = "Cliente MinIO de manuales compartido por apps/api y apps/worker"
+requires-python = ">=3.12"
+dependencies = [
+  "minio>=7.2.18,<8.0.0",
+  "rc7-shared-config",
+]
+
+[build-system]
+requires = ["setuptools>=80.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["rc7_shared_storage*"]

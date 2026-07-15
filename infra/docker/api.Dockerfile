@@ -10,8 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends libpq5 && rm -r
 # Shared packages — installed editable first so the app deps are satisfied.
 COPY packages/rc7_shared_db /opt/rc7_shared_db
 COPY packages/rc7_shared_config /opt/rc7_shared_config
+COPY packages/rc7_shared_storage /opt/rc7_shared_storage
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -e /opt/rc7_shared_db -e /opt/rc7_shared_config
+    && pip install --no-cache-dir -e /opt/rc7_shared_db -e /opt/rc7_shared_config -e /opt/rc7_shared_storage
 
 COPY apps/api/pyproject.toml ./
 COPY apps/api/src ./src

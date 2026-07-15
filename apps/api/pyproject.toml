@@ -17,7 +17,8 @@ dependencies = [
   # Shared packages — installed editable from packages/ (see
   # infra/docker/api.Dockerfile); not published to PyPI.
   "rc7-shared-db",
-  "rc7-shared-config"
+  "rc7-shared-config",
+  "rc7-shared-storage"
 ]
 
 [project.optional-dependencies]

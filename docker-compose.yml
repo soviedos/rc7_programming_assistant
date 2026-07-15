@@ -58,6 +58,7 @@ services:
       # Shared packages (editable install) — live-editable in dev.
       - ./packages/rc7_shared_db:/opt/rc7_shared_db
       - ./packages/rc7_shared_config:/opt/rc7_shared_config
+      - ./packages/rc7_shared_storage:/opt/rc7_shared_storage
     ports:
       - "8000:8000"
     depends_on:
@@ -91,6 +92,7 @@ services:
       # Shared packages (editable install) — live-editable in dev.
       - ./packages/rc7_shared_db:/opt/rc7_shared_db
       - ./packages/rc7_shared_config:/opt/rc7_shared_config
+      - ./packages/rc7_shared_storage:/opt/rc7_shared_storage
     depends_on:
       postgres:
         condition: service_healthy
