@@ -14,9 +14,10 @@ dependencies = [
   "SQLAlchemy>=2.0.41,<3.0.0",
   "pgvector>=0.3.0,<1.0.0",
   "google-genai>=1.0.0",
-  # Shared ORM models / Base — installed editable from packages/rc7_shared_db
-  # (see infra/docker/api.Dockerfile); not published to PyPI.
-  "rc7-shared-db"
+  # Shared packages — installed editable from packages/ (see
+  # infra/docker/api.Dockerfile); not published to PyPI.
+  "rc7-shared-db",
+  "rc7-shared-config"
 ]
 
 [project.optional-dependencies]

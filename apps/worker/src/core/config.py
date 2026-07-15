@@ -1,17 +1,7 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from rc7_shared_config import SharedSettings
 
 
-class Settings(BaseSettings):
-    app_env: str = "development"
-    postgres_host: str = "postgres"
-    postgres_port: int = 5432
-    postgres_db: str = "rc7_assistant"
-    postgres_user: str = "postgres"
-    postgres_password: str = "postgres"
-    minio_endpoint: str = "http://minio:9000"
-    minio_root_user: str = "minioadmin"
-    minio_root_password: str = "minioadmin"
-    minio_bucket_manuals: str = "rc7-manuals"
+class Settings(SharedSettings):
     worker_poll_interval_seconds: int = 5
     # Sized for a full semantic review: every chunk costs one Gemini call, so a
     # large manual needs hours, not minutes.
@@ -19,11 +9,6 @@ class Settings(BaseSettings):
     worker_manual_timeout_base_coverage_mb: int = 8
     worker_manual_timeout_extra_per_mb_seconds: int = 30
     worker_manual_timeout_max_seconds: int = 21600
-    gemini_api_key: str = "replace_me"
-    gemini_gen_model: str = "gemini-3.5-flash"
-    gemini_embed_model: str = "gemini-embedding-2"
-    gemini_embed_dim: int = 3072  # must be identical in api and worker
-    gemini_timeout_seconds: int = 300
     semantic_review_enabled: bool = True
     semantic_review_sample_rate: float = 1.0
     semantic_review_min_chars: int = 250
@@ -41,20 +26,6 @@ class Settings(BaseSettings):
     semantic_review_cost_input_per_1k_tokens: float = 0.00025
     semantic_review_cost_output_per_1k_tokens: float = 0.00075
     semantic_review_estimated_output_tokens: int = 120
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-        extra="ignore",
-    )
-
-    @property
-    def sqlalchemy_database_url(self) -> str:
-        return (
-            f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
-        )
 
 
 settings = Settings()

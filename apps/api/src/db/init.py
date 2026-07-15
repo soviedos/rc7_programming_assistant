@@ -1,3 +1,4 @@
+from rc7_shared_db.migrations import ensure_manual_columns
 from sqlalchemy import inspect, select, text
 
 from src.core.config import settings
@@ -59,7 +60,7 @@ def initialize_database() -> None:
     ensure_vector_extension()
     Base.metadata.create_all(bind=engine)
     ensure_user_columns()
-    ensure_manual_columns()
+    ensure_manual_columns(engine)
     ensure_chunk_embedding_column()
     seed_bootstrap_admin()
     seed_role_permissions()
@@ -96,38 +97,6 @@ def ensure_user_columns() -> None:
                     "ADD COLUMN profile_settings JSON DEFAULT '{}' NOT NULL"
                 )
             )
-
-
-def ensure_manual_columns() -> None:
-    inspector = inspect(engine)
-    table_names = set(inspector.get_table_names())
-    if "manuals" not in table_names:
-        return
-
-    manual_columns = {column["name"] for column in inspector.get_columns("manuals")}
-    missing_columns = {
-        "chunk_count": "INTEGER DEFAULT 0 NOT NULL",
-        "last_error": "TEXT",
-        "processing_started_at": "TIMESTAMP",
-        "indexed_at": "TIMESTAMP",
-        "sha256": "VARCHAR(64)",
-    }
-
-    with engine.begin() as connection:
-        for column_name, sql_type in missing_columns.items():
-            if column_name in manual_columns:
-                continue
-
-            if engine.dialect.name == "postgresql":
-                connection.execute(
-                    text(
-                        f"ALTER TABLE manuals ADD COLUMN IF NOT EXISTS {column_name} {sql_type}"
-                    )
-                )
-            else:
-                connection.execute(
-                    text(f"ALTER TABLE manuals ADD COLUMN {column_name} {sql_type}")
-                )
 
 
 def ensure_chunk_embedding_column() -> None:
