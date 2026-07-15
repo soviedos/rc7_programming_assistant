@@ -51,15 +51,23 @@ Todos los endpoints requieren rol `admin`.
 
 ## Valor por defecto de `system_prompt_pac`
 
-El system prompt por defecto contiene las reglas sintácticas del lenguaje PAC para robots DENSO
-RC7, incluyendo:
+El system prompt por defecto (`_DEFAULT_PAC_RULES`,
+[settings/service.py](../../apps/api/src/services/settings/service.py)) contiene las
+reglas sintácticas del PAC real tal como aparece en los programas de WinCaps III
+(capítulo 9 del manual RC7):
 
-- Declaración de variables (`DIM`, `INTEGER`, `REAL`, `STRING`, `BOOLEAN`, `POSITION`)
-- Instrucciones de movimiento (`MOVE`, `MOVES`, `MOVEC`, velocidad, `WEIGHT`, `TOOL`, `WORK`)
-- Control de flujo (`IF/THEN/ELSE/END IF`, `FOR/NEXT`, `WHILE/WEND`, `GOSUB/RETURN`)
-- E/S digitales (`BITTEST`, `BITSET`, `BITRESET`, `IO`)
-- Funciones de posición (`HERE`, `SHIFT`, `INV`)
-- Formato de respuesta JSON requerido (`summary`, `pac_code`, `references`)
+- Directivas de preprocesador (`#INCLUDE "dio_tab.h"`, `#INCLUDE "var_tab.h"`, `#DEFINE`)
+- Estructura del programa: `PROGRAM`, cuerpo terminado en `END`, y subrutinas
+  definidas **después** del `END` con `*Nombre:` … `RETURN`
+- Control del brazo: `TAKEARM` / `GIVEARM` (nunca `FREEARM`) y `MOTOR ON/OFF`
+- Movimiento: `MOVE P, P[pHome], S=50`, movimiento relativo con `@`, y `JUMP` para
+  trayectorias articulares largas
+- Variables **por macros de `var_tab.h`** (`I[]`, `F[]`, `C[]`); el prompt indica
+  explícitamente **no** declarar locales con `DIM` salvo casos especiales
+- E/S digitales: `SET IO[...]` / `RESET IO[...]` (nunca `IO[...] = ON/OFF`, que solo
+  vale como condición en `IF`/`WAIT`), y los helpers `CALL dioWaitAndSet` /
+  `CALL dioSetAndWait`
+- Llamadas: `CALL pro2` para programa externo, `GOSUB *Rutina` para subrutina interna
 
 El valor completo puede consultarse en `GET /api/v1/admin/settings/system_prompt_pac`.
 

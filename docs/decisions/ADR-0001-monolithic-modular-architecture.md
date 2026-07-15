@@ -37,4 +37,7 @@ Los tres componentes se despliegan como contenedores independientes, orquestados
 
 - **Positivas**: despliegue más simple, menor overhead de comunicación, documentación y testing más directos
 - **Negativas**: el backend concentra más responsabilidades; cambios grandes pueden requerir coordinación entre módulos
-- **Mitigación**: la organización en servicios, repositorios y módulos funcionales permite extraer servicios independientes en el futuro sin refactoring estructural
+- **Mitigación**: la organización en routers por dominio (`api/v1/routes/`) y servicios
+  (`services/`) permite extraer servicios independientes en el futuro sin refactoring
+  estructural. No hay capa de repositorios: los servicios usan la sesión de SQLAlchemy
+  directamente.

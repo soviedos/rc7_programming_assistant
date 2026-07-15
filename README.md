@@ -31,7 +31,7 @@ flowchart TB
         end
 
         subgraph DB["Persistencia"]
-            PG[("PostgreSQL 17 + pgvector\n:5432\nusers · manuals · manual_chunks\nchat_history · audit_log · settings")]:::data
+            PG[("PostgreSQL 17 + pgvector\n:5432\nusers · role_permissions · manuals · manual_chunks\nmanual_chunk_reviews · manual_review_summaries\nchat_history · audit_log · system_settings")]:::data
             MinIO[("MinIO\n:9000  /  :9001 console\nObject Storage S3-compatible\nPDFs originales")]:::data
         end
     end
@@ -39,11 +39,10 @@ flowchart TB
     Gemini(["☁️ Google Gemini API\ngemini-3.5-flash\ngemini-embedding-2 (3072-dim)"]):::external
 
     Browser -->|HTTPS| Nginx
-    Nginx -->|proxy :3000| NextJS
-    Nginx -->|"proxy /api/v1/*  →  :8000"| FastAPI
-    NextJS -->|"fetch /api/v1/*"| Nginx
+    Nginx -->|"proxy TODO (incl. /api/v1/*) → :3000"| NextJS
+    NextJS -->|"proxy interno /api/v1/* → api:8000"| FastAPI
     FastAPI -->|"SQLAlchemy ORM"| PG
-    FastAPI -->|"upload / presigned URL"| MinIO
+    FastAPI -->|"put_object / get_object (bytes vía API)"| MinIO
     FastAPI -->|"HyDE · SSE streaming"| Gemini
     PG -.->|"poll · reclama manual pendiente\nFOR UPDATE SKIP LOCKED"| Worker
     Worker -->|"download PDF"| MinIO
@@ -191,7 +190,7 @@ curl -s http://localhost:8000/api/v1/health/ | python3 -m json.tool
 | Variable | Requerida | Default | Descripción |
 |---|---|---|---|
 | `APP_ENV` | No | `development` | Entorno (`development`, `production`) |
-| `PROJECT_NAME` | No | `rc7_programming_assistant` | Nombre del proyecto |
+| `PROJECT_NAME` | No | `RC7 Programming Assistant API` | Nombre del proyecto (título en Swagger UI) |
 | `BOOTSTRAP_ADMIN_EMAIL` | Sí | — | Email del admin inicial |
 | `BOOTSTRAP_ADMIN_PASSWORD` | Sí | — | Contraseña del admin inicial |
 | `BOOTSTRAP_ADMIN_NAME` | No | `Administrador RC7` | Nombre visible del admin inicial |
@@ -243,7 +242,8 @@ rc7_programming_assistant/
 │   ├── web/          # Frontend Next.js 16
 │   └── worker/       # Worker de ingestión documental
 ├── packages/
-│   └── rc7_shared_db/ # Modelos ORM + Base compartidos (api y worker)
+│   ├── rc7_shared_config/ # SharedSettings: config común + validación de secretos (api y worker)
+│   └── rc7_shared_db/     # Modelos ORM, Base y migraciones compartidas (api y worker)
 ├── docs/             # Documentación técnica
 │   ├── architecture/ # Visión general, decisiones, diagramas Mermaid (ARCHITECTURE.md)
 │   ├── backend/      # Módulos API: endpoints, settings, audit

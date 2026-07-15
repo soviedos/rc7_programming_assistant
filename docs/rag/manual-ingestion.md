@@ -72,7 +72,7 @@ con el mensaje "Cancelado por el usuario.". Disponible desde el botón "Detener"
 | `pending` | Subido pero aún no procesado por el worker |
 | `processing` | Worker actualmente procesando el manual |
 | `indexed` | Ingestión completada; chunks disponibles para RAG |
-| `failed` | Ingestión fallida o cancelada; el campo `error_message` contiene el detalle |
+| `failed` | Ingestión fallida o cancelada; el campo `last_error` contiene el detalle |
 
 **Resiliencia ante crashes:** Si el worker muere mientras procesa un manual (p.ej. por OOM),
 el registro queda en `processing`. Al reiniciar, el worker re-encola automáticamente los manuales
@@ -187,8 +187,15 @@ Durante el chat, la búsqueda de chunks utiliza:
 En Fase 3 cada fragmento de contexto se etiqueta con un ID estable (`S1`, `S2`, …) y se
 construye un `source_map` `ID → (manual, página)`. El system prompt exige que cada instrucción
 o bloque PAC generado lleve un comentario de fuente (`' fuente: S2`, válido en PAC por el
-apóstrofo) y que el campo `references` liste solo los IDs realmente usados. `_resolve_references`
-descarta IDs alucinados y, si no hay ninguno válido, cae al conjunto recuperado completo.
+apóstrofo).
+
+El array `references` que devuelve el modelo se **ignora a propósito**:
+`_resolve_references` solo recibe el `source_map` y emite una entrada por cada SID
+que contenga, ordenadas S1…Sn. Así la leyenda cubre todos los `S<n>` que pueden
+aparecer citados en el código, ningún ID queda sin resolver y no hace falta
+descartar IDs alucinados: el `source_map` es la única fuente de verdad y se
+persiste con el mensaje, de modo que un SID nunca se re-decodifica en un turno
+posterior.
 
 ---
 

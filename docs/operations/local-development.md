@@ -100,9 +100,14 @@ docker compose up --build -d api
 | `JWT_SECRET` | Secreto para firmar tokens JWT | Sí |
 | `SESSION_COOKIE_NAME` | Nombre de la cookie de sesión | No |
 | `SESSION_TTL_MINUTES` | Duración de la sesión en minutos | No |
+| `GEMINI_API_KEY` | Clave de Google Gemini. Sin ella el chat no responde y la ingestión falla: es el flujo central del producto | Sí |
 | `POSTGRES_*` | Configuración de conexión a PostgreSQL | No (valores por defecto) |
+| `MINIO_*` | Configuración de MinIO | No (valores por defecto) |
 
 > Copie `.env.example` como `.env` y ajuste los valores antes de levantar el stack.
+> Los valores operativos (cobertura de la revisión, timeouts, modelos) son defaults del
+> código en `packages/rc7_shared_config` y `apps/worker/src/core/config.py`: el `.env`
+> solo aporta secretos y lo propio de la máquina.
 
 ---
 

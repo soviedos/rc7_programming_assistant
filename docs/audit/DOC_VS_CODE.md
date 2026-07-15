@@ -61,3 +61,24 @@
 | Hashing de contraseñas con bcrypt | `pwdlib.PasswordHash.recommended()` (Argon2) | [auth/passwords.py:5](../../apps/api/src/services/auth/passwords.py#L5) | Corregido |
 | Audit log "nunca lanza excepción" | Correcto: `log_event` captura todo y lo manda al logger | [audit_service.py:26-42](../../apps/api/src/services/audit_service.py#L26) | Verificado |
 | Borrado de usuario auditado como evento de borrado | **Corregido (código):** ahora registra `ADMIN_USER_DELETED`. | [routes/admin.py](../../apps/api/src/api/v1/routes/admin.py) | Corregido (CODE_AUDIT C3) |
+
+## Reconciliación doc↔código (auditoría sistemática)
+
+> Revisión de los 18 documentos contra el código real: 70 discrepancias detectadas,
+> 59 confirmadas tras verificación adversarial. Las de mayor impacto:
+
+| Afirmación previa | Realidad en el código | Fuente | Estado |
+|---|---|---|---|
+| `CORS_ORIGINS=https://tudominio.com` como string plano en la guía de producción | `cors_origins` es `list[str]`: un string plano aborta el arranque con `SettingsError`. Debe ir en JSON siempre | [deployment.md](../operations/deployment.md), [.env.prod.example] | Corregido |
+| Secret `ENV_PROD` con el `.env` de producción, y un ejemplo que lo escribe con `echo > .env` | No existe: el workflow exige que el `.env` ya esté en el servidor y **nunca** lo escribe (es deliberado). El secret que falta documentar es `SERVER_WORKDIR` | [deploy.yml:82-96](../../.github/workflows/deploy.yml) | Corregido |
+| Nginx proxea `/api/v1/*` a FastAPI, y el frontend hace fetch contra Nginx | Nginx manda **todo** a `web:3000`; el enrutado a la API lo hace el proxy catch-all de Next.js | [nginx.conf:59-81](../../infra/nginx/nginx.conf) | Corregido |
+| `FastAPI → MinIO` vía "presigned URL" | No existe ninguna URL prefirmada: los bytes pasan por la API (`put_object`/`get_object`) | [manuals/storage.py](../../apps/api/src/services/manuals/storage.py) | Corregido |
+| Frontend en desarrollo usa `npm run dev` (Turbopack) | El servicio `web` de dev corre el build standalone igual que producción: **no hay hot reload** | [docker-compose.yml] | Corregido |
+| Tests del frontend con `docker compose exec web npm test` | El contenedor `web` no lleva devDependencies: vitest no existe ahí. Se corre con `docker compose run --rm web-test` | [testing.md](../operations/testing.md) | Corregido (código y docs) |
+| `actor_id` es un `UUID` | Es `int` (`Mapped[int \| None]`), y el filtro de la API lo tipa igual | [models/audit.py:19](../../apps/api/src/db/models/audit.py#L19) | Corregido |
+| Cada evento de auditoría lleva su `event_metadata`, y todos incluyen `ip_address` | Solo `chat.py` pasa `metadata`; en el resto queda `NULL`. `ip_address` solo lo registran `auth.py` y `chat.py` | [routes/](../../apps/api/src/api/v1/routes/) | Corregido |
+| El system prompt PAC cubre `DIM`, `MOVES`, `MOVEC`, `BITTEST`, `POSITION`, `BOOLEAN` | Ninguno de esos términos aparece en `_DEFAULT_PAC_RULES`, que además indica **no** usar `DIM` y preferir macros de `var_tab.h` | [settings/service.py:12](../../apps/api/src/services/settings/service.py#L12) | Corregido |
+| `_resolve_references` descarta IDs alucinados del array `references` del modelo | Recibe solo el `source_map` y **ignora a propósito** el array del modelo; emite una entrada por cada SID | [chat/service.py:100-114](../../apps/api/src/services/chat/service.py#L100) | Corregido |
+| El manual fallido guarda el detalle en `error_message` | La columna es `last_error` | [models/manual.py] | Corregido |
+| La mitigación del ADR cita una capa de "repositorios" | No existe: los servicios usan la sesión de SQLAlchemy directamente | [ADR-0001](../decisions/ADR-0001-monolithic-modular-architecture.md) | Corregido |
+| `packages/` contiene un solo paquete (`rc7_shared_db`) | Son dos: se añadió `rc7_shared_config` con `SharedSettings` y la validación de secretos | [packages/](../../packages/) | Corregido |

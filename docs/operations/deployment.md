@@ -18,8 +18,8 @@ Guía para migrar el sistema a un servidor de producción (AWS Lightsail, VPS, o
 
 | Aspecto | Desarrollo (`docker-compose.yml`) | Producción (`docker-compose.prod.yml`) |
 |---|---|---|
-| Código fuente | Montado como volumen (`./apps/…:/app`) | Copiado y compilado dentro de la imagen |
-| Frontend | `npm run dev` (Turbopack) | `next build` + `node server.js` |
+| Código fuente (api y worker) | Montado como volumen (`./apps/…:/app` + `./packages/…`) | Copiado dentro de la imagen |
+| Frontend | `next build` + `node server.js` — **igual que producción**: el servicio `web` de desarrollo también corre el build standalone y no monta el código, así que **no hay hot reload**; cada cambio exige `docker compose up --build -d web` | `next build` + `node server.js` |
 | Backend | `uvicorn --reload` | `uvicorn` sin reload |
 | Puertos internos | Expuestos al host (5432, 9000) | Solo accesibles en red Docker interna |
 | MinIO | Bind mount `./storage/data` | Named volume `minio_data` |
@@ -53,14 +53,24 @@ Variables obligatorias en producción:
 ```env
 APP_ENV=production
 JWT_SECRET=<generar con: openssl rand -hex 32>
+BOOTSTRAP_ADMIN_EMAIL=<email del primer administrador>
+BOOTSTRAP_ADMIN_PASSWORD=<contraseña fuerte>
 POSTGRES_PASSWORD=<contraseña fuerte>
 MINIO_ROOT_USER=<usuario personalizado>
 MINIO_ROOT_PASSWORD=<contraseña fuerte>
 GEMINI_API_KEY=<clave de Google AI>
-CORS_ORIGINS=https://tudominio.com
+CORS_ORIGINS=["https://tudominio.com"]
 ```
 
-> La API rechazará el arranque si alguna de estas variables tiene el valor por defecto (`replace_me`, `postgres`, `minioadmin`).
+> `CORS_ORIGINS` va **siempre** en formato JSON, incluso con un solo origen:
+> `cors_origins` es `list[str]` y un string plano aborta el arranque con
+> `SettingsError: error parsing value for field "cors_origins"`.
+
+> Con `APP_ENV=production`, api y worker rechazan el arranque si alguna de estas
+> variables conserva un valor por defecto o débil (`replace_me`, `postgres`,
+> `minioadmin`, vacío), o si `CORS_ORIGINS` contiene `localhost`. Las validaciones
+> comunes viven en `packages/rc7_shared_config`; la API añade las de `JWT_SECRET`,
+> `BOOTSTRAP_ADMIN_PASSWORD` y `CORS_ORIGINS`.
 
 ---
 
@@ -163,25 +173,42 @@ docker compose -f docker-compose.prod.yml down
 
 ## CI/CD con GitHub Actions
 
-El flujo recomendado para deploys automáticos:
+Ya está implementado en `.github/workflows/deploy.yml`, con tres jobs: `test-frontend`,
+`test-backend` (api y worker) y `deploy`, que solo corre en push a `main` y si todos los
+tests pasan.
 
 ```
-git push → GitHub Actions → SSH al servidor → docker compose up --build
+git push a main → tests (web + api + worker) → SSH al servidor → git pull
+                → docker compose -f docker-compose.prod.yml up -d --build --wait
+                → rollback automático si algún healthcheck falla
 ```
 
 Secrets necesarios en GitHub Actions:
 - `SERVER_HOST` — IP o dominio del servidor
 - `SERVER_USER` — Usuario SSH
 - `SSH_PRIVATE_KEY` — Clave privada SSH
-- `ENV_PROD` — Contenido completo del `.env` de producción
+- `SERVER_WORKDIR` — Ruta absoluta del proyecto en el servidor
+
+El `.env` **no** se despliega desde un secret: debe existir ya en el servidor con
+`chmod 600` y el workflow aborta si falta. Es deliberado — evita la expansión
+frágil de secretos multilínea y preserva los overrides propios de esa máquina. Se
+instala una sola vez:
+
+```bash
+scp .env.prod.example user@host:/ruta/del/proyecto/.env && chmod 600 .env
+```
 
 ```yaml
-# .github/workflows/deploy.yml (esquema)
+# .github/workflows/deploy.yml (esquema real)
 - name: Deploy
-  run: |
-    echo "${{ secrets.ENV_PROD }}" > .env
-    docker compose -f docker-compose.prod.yml up -d --build
-    docker compose -f docker-compose.prod.yml ps
+  uses: appleboy/ssh-action@v1.2.0
+  with:
+    host: ${{ secrets.SERVER_HOST }}
+    script: |
+      cd "${{ secrets.SERVER_WORKDIR }}"
+      [[ -f .env ]] || exit 1          # aborta si no existe; nunca lo escribe
+      git pull origin main
+      docker compose -f docker-compose.prod.yml up -d --build --wait
 ```
 
 ---

@@ -48,7 +48,7 @@ docker compose exec api python -m pytest
 
 **Ubicación de pruebas**: `apps/web/tests/`
 
-**Cobertura actual** (20 tests, 7 archivos):
+**Cobertura actual** (47 tests, 11 archivos):
 
 | Área | Pruebas |
 |---|---|

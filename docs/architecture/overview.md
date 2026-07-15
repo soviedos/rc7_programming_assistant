@@ -37,15 +37,22 @@ flexibilidad de microservicios, adecuado para el volumen actual de manuales DENS
 | Coordinación | Polling a PostgreSQL (`status = 'pending'`) con `FOR UPDATE SKIP LOCKED` para reclamar manuales |
 | Resiliencia | Timeout por manual, recuperación automática de manuales atascados en `processing` al reiniciar; límite de 3 crashes consecutivos antes de marcar como `failed` |
 
-### Paquete compartido — `packages/rc7_shared_db/`
+### Paquetes compartidos — `packages/`
 
-Para evitar divergencia, la `Base` declarativa, los tipos cross-dialect
-(`ArrayOfString`, `EmbeddingVector`) y los **modelos ORM compartidos** (`Manual`,
-`ManualChunk`, `ManualChunkReview`, `ManualReviewSummary`) tienen una **única
-definición** en este paquete. `apps/api` y `apps/worker` lo instalan editable (ver
-Dockerfiles) y lo re-exportan vía `src/db/base.py` y `src/db/models/__init__.py`, de
-modo que comparten la misma `MetaData`. Los modelos propios de cada servicio
-(`User`, `AuditLog`, `ChatHistory`, `RolePermission`, `SystemSetting`) viven en la API.
+**`rc7_shared_db/`** — Para evitar divergencia, la `Base` declarativa, los tipos
+cross-dialect (`ArrayOfString`, `EmbeddingVector`), los **modelos ORM compartidos**
+(`Manual`, `ManualChunk`, `ManualChunkReview`, `ManualReviewSummary`) y las
+migraciones idempotentes (`ensure_manual_columns`) tienen una **única definición**
+aquí. `apps/api` y `apps/worker` lo instalan editable (ver Dockerfiles) y lo
+re-exportan vía `src/db/base.py` y `src/db/models/__init__.py`, de modo que comparten
+la misma `MetaData`. Los modelos propios de cada servicio (`User`, `AuditLog`,
+`ChatHistory`, `RolePermission`, `SystemSetting`) viven en la API.
+
+**`rc7_shared_config/`** — `SharedSettings` define una sola vez la configuración que
+ambos servicios necesitan (Postgres, MinIO, modelos y timeout de Gemini) y las
+validaciones de secretos en producción. Los `Settings` de api y worker heredan de él
+y declaran solo sus campos propios, extendiendo `production_errors()` para sus
+propias validaciones.
 
 ### PostgreSQL 17 + pgvector
 
@@ -75,7 +82,7 @@ En producción nginx aplica config especial para SSE (`proxy_buffering off`,
 
 ```text
 1. Browser → POST /api/v1/auth/login (email + password)
-2. API valida credenciales contra PostgreSQL (bcrypt via pwdlib)
+2. API valida credenciales contra PostgreSQL (Argon2 vía `pwdlib.recommended()`)
 3. API emite cookie HttpOnly con JWT firmado (HS256, TTL configurable)
 4. Browser → GET /api/v1/auth/me para verificar sesión en rutas protegidas
 5. Rutas admin verifican rol activo en el payload del JWT

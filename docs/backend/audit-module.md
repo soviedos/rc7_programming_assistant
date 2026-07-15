@@ -17,7 +17,7 @@ autenticación, administración, chat y configuración. Los registros son de sol
 | Parámetro | Tipo | Descripción |
 |---|---|---|
 | `event_type` | `string` | Filtrar por tipo de evento (ej. `AUTH_LOGIN`) |
-| `actor_id` | `UUID` | Filtrar por ID del usuario que realizó la acción |
+| `actor_id` | `int` | Filtrar por ID del usuario que realizó la acción |
 | `resource_type` | `string` | Filtrar por tipo de recurso afectado (ej. `manual`, `user`) |
 | `date_from` | `datetime` | Eventos desde esta fecha (ISO 8601) |
 | `date_to` | `datetime` | Eventos hasta esta fecha (ISO 8601) |
@@ -32,13 +32,13 @@ autenticación, administración, chat y configuración. Los registros son de sol
 |---|---|---|
 | `id` | UUID | Identificador único del evento |
 | `event_type` | string | Tipo de evento (ver tabla a continuación) |
-| `actor_id` | UUID | ID del usuario que realizó la acción (nullable) |
+| `actor_id` | int | ID del usuario que realizó la acción (nullable) |
 | `actor_email` | string | Email del actor en el momento del evento |
 | `resource_type` | string | Categoría del recurso afectado (ej. `"user"`, `"manual"`, `"setting"`) |
 | `resource_id` | string | ID del recurso específico (nullable) |
 | `description` | string | Descripción breve del evento en texto natural |
 | `event_metadata` | JSON | Datos adicionales del contexto (ver columna "Metadata" en la tabla de eventos) |
-| `ip_address` | string | IP del cliente que originó la acción |
+| `ip_address` | string | IP del cliente (nullable: solo lo registran auth y chat) |
 | `created_at` | datetime | Timestamp del evento (UTC) |
 
 **Privacidad:** No se almacenan el contenido del prompt del usuario, el texto de la respuesta
@@ -48,20 +48,26 @@ del asistente ni el código PAC generado. Solo se registran metadatos del evento
 
 ## Tipos de eventos
 
-| Tipo de evento | Módulo | Trigger | Metadata relevante |
+Solo el módulo de chat pasa `metadata` a `log_event`; en el resto de eventos
+`event_metadata` queda en `NULL`. El actor, el recurso afectado y la descripción sí
+se registran siempre (columnas `actor_id`, `actor_email`, `resource_type`,
+`resource_id`, `description`).
+
+| Tipo de evento | Módulo | Trigger | `event_metadata` |
 |---|---|---|---|
-| `AUTH_FAILED` | `auth.py` | Intento de login fallido (credenciales incorrectas) | `{"email": "..."}` |
-| `AUTH_LOGIN` | `auth.py` | Login exitoso | `{"role": "admin"}` |
-| `AUTH_LOGOUT` | `auth.py` | Logout del usuario (best-effort, puede no registrarse si la sesión ya expiró) | `{}` |
-| `CHAT_QUERY` | `chat.py` | Consulta procesada por el pipeline RAG (streaming o no) | `{"robot_type": "VP-6242G", "entry_type": "program", "chunks_retrieved": 6}` |
-| `ADMIN_USER_CREATED` | `admin.py` | Admin crea un nuevo usuario | `{"email": "...", "roles": [...]}` |
-| `ADMIN_USER_UPDATED` | `admin.py` | Admin actualiza datos de un usuario | `{"user_id": "...", "fields_changed": [...]}` |
-| `ADMIN_USER_TOGGLED` | `admin.py` | Admin desactiva un usuario (soft delete) | `{"user_id": "...", "action": "disable"}` |
-| `SETTING_UPDATED` | `settings.py` | Admin actualiza el valor de un parámetro | `{"key": "rag_top_k_chunks", "old_value": "6", "new_value": "8"}` |
-| `SETTING_RESET` | `settings.py` | Admin restaura todos los parámetros a sus defaults | `{"keys_reset": [...]}` |
-| `MANUAL_UPLOADED` | `manuals.py` | Admin sube un manual PDF | `{"filename": "...", "size_bytes": 1234567}` |
-| `MANUAL_UPDATED` | `manuals.py` | Admin actualiza metadatos de un manual | `{"manual_id": "...", "fields_changed": [...]}` |
-| `MANUAL_DELETED` | `manuals.py` | Admin elimina un manual (incluye chunks y archivo MinIO) | `{"manual_id": "...", "title": "..."}` |
+| `AUTH_FAILED` | `auth.py` | Intento de login fallido (credenciales incorrectas) | — |
+| `AUTH_LOGIN` | `auth.py` | Login exitoso | — |
+| `AUTH_LOGOUT` | `auth.py` | Logout del usuario (best-effort, puede no registrarse si la sesión ya expiró) | — |
+| `CHAT_QUERY` | `chat.py` | Consulta procesada por el pipeline RAG (streaming o no) | `{"robot_type": "...", "entry_type": "...", "references_count": 6}` |
+| `CHAT_QUERY_FAILED` | `chat.py` | La consulta RAG falló | `{"robot_type": "...", "error": "..."}` (error truncado a 300 chars) |
+| `ADMIN_USER_CREATED` | `admin.py` | Admin crea un nuevo usuario | — |
+| `ADMIN_USER_UPDATED` | `admin.py` | Admin actualiza datos de un usuario | — |
+| `ADMIN_USER_DELETED` | `admin.py` | Admin elimina un usuario | — |
+| `SETTING_UPDATED` | `settings.py` | Admin actualiza el valor de un parámetro | — |
+| `SETTING_RESET` | `settings.py` | Admin restaura todos los parámetros a sus defaults | — |
+| `MANUAL_UPLOADED` | `manuals.py` | Admin sube un manual PDF | — |
+| `MANUAL_UPDATED` | `manuals.py` | Admin actualiza metadatos de un manual | — |
+| `MANUAL_DELETED` | `manuals.py` | Admin elimina un manual (incluye chunks y archivo MinIO) | — |
 
 ---
 
@@ -71,7 +77,7 @@ del asistente ni el código PAC generado. Solo se registran metadatos del evento
 - El registro es **append-only** desde la API; no existe endpoint de modificación o borrado.
 - El servicio `log_event()` **nunca lanza excepción**; fallos de persistencia se registran
   en el log del proceso Python sin propagarse al caller.
-- Todos los eventos incluyen `ip_address` del cliente original.
+- Solo los eventos de `auth.py` y `chat.py` registran `ip_address`; en el resto queda `NULL`.
 
 ### ⚠️ Limitaciones
 - **Best-effort:** Si la base de datos no está disponible en el momento del evento, el
@@ -90,15 +96,15 @@ del asistente ni el código PAC generado. Solo se registran metadatos del evento
 {
   "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "event_type": "CHAT_QUERY",
-  "actor_id": "1c2d3e4f-5a6b-7c8d-9e0f-1a2b3c4d5e6f",
+  "actor_id": 1,
   "actor_email": "user@example.com",
   "resource_type": "chat",
   "resource_id": null,
   "description": "Usuario realizó una consulta al asistente PAC",
   "event_metadata": {
-    "robot_type": "VP-6242G",
-    "entry_type": "program",
-    "chunks_retrieved": 6
+    "robot_type": "VP-6242",
+    "entry_type": "code",
+    "references_count": 6
   },
   "ip_address": "192.168.1.100",
   "created_at": "2025-05-17T14:32:10.123456Z"

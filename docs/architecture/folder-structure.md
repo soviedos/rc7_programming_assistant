@@ -36,8 +36,12 @@ rc7_programming_assistant/
 │       │   ├── services/       # Integraciones externas (MinIO)
 │       │   └── utils/          # Utilidades del pipeline (logging)
 │       └── tests/              # Pruebas del worker
+├── packages/                   # Paquetes compartidos por api y worker (editable install)
+│   ├── rc7_shared_config/      # SharedSettings: config común + validación de secretos
+│   └── rc7_shared_db/          # Base ORM, modelos y migraciones compartidas
 ├── docs/                       # Documentación técnica
 │   ├── architecture/           # Arquitectura y diseño
+│   ├── audit/                  # Auditorías de código y doc-vs-código
 │   ├── backend/                # Contratos API y módulos
 │   ├── frontend/               # Layout y criterios de UX
 │   ├── operations/             # Desarrollo local y testing
@@ -46,11 +50,14 @@ rc7_programming_assistant/
 ├── infra/                      # Infraestructura y contenedores
 │   ├── docker/                 # Dockerfiles
 │   ├── nginx/                  # Configuración de reverse proxy
-│   ├── minio/                  # Configuración de object storage
-│   └── postgres/               # Scripts de inicialización de BD
+│   ├── minio/                  # Notas de object storage (solo README)
+│   └── postgres/               # Notas de la BD (solo README; el esquema lo crea la API al arrancar)
+├── scripts/                    # Backup, export e import de datos
 ├── storage/                    # Volúmenes locales de desarrollo
 ├── docker-compose.yml
+├── docker-compose.prod.yml
 ├── .env.example
+├── .env.prod.example
 └── .gitignore
 ```
 

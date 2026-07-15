@@ -53,9 +53,17 @@ flowchart TB
 `minio`. **Nginx existe solo en producción** (`docker-compose.prod.yml`) como terminador TLS/reverse
 proxy; en desarrollo no hay nginx y el proxy de Next.js cumple ese rol para `/api/v1/*`.
 
-**Dependencia de código compartida (no es un servicio):** `packages/rc7_shared_db/` define una sola
-vez la `Base` ORM, los tipos cross-dialect y los modelos `Manual`/`ManualChunk`/`ManualChunkReview`/
-`ManualReviewSummary`. `api` y `worker` la instalan editable en sus imágenes y la re-exportan.
+**Dependencias de código compartidas (no son servicios):**
+
+- `packages/rc7_shared_db/` define una sola vez la `Base` ORM, los tipos
+  cross-dialect, los modelos `Manual`/`ManualChunk`/`ManualChunkReview`/
+  `ManualReviewSummary` y las migraciones idempotentes (`ensure_manual_columns`).
+- `packages/rc7_shared_config/` define `SharedSettings`: la configuración que ambos
+  servicios necesitan (Postgres, MinIO, modelos y timeout de Gemini) y las
+  validaciones de secretos en producción. Los `Settings` de `api` y `worker`
+  heredan de él y declaran solo sus campos propios.
+
+`api` y `worker` instalan ambos paquetes editable en sus imágenes.
 
 ---
 
@@ -131,8 +139,10 @@ flowchart TD
 
 Parámetros configurables en caliente (`system_settings`): `rag_top_k_chunks` (6),
 `rag_context_budget_chars` (12000), `gemini_temperature` (0.7), `gemini_max_tokens` (8192),
-`system_prompt_pac`, `history_max_entries` (50). El candidato pool (50) y los modelos están
-hardcoded ([CODE_AUDIT S1, D1](../audit/CODE_AUDIT.md)).
+`system_prompt_pac`, `history_max_entries` (50), `rag_candidate_pool` (50) y
+`gemini_timeout_seconds` (300). Los modelos Gemini se configuran por entorno
+(`GEMINI_GEN_MODEL`, `GEMINI_EMBED_MODEL`), centralizados en
+`packages/rc7_shared_config`.
 
 ---
 

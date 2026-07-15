@@ -32,13 +32,18 @@ La interfaz se comporta como una **herramienta de ingeniería asistida**, no com
 - Panel de conversación con historial de mensajes
 - Sidebar de historial de consultas
 
-### `/admin/manuals` — Consola administrativa
+### Consola administrativa
 
-- Listado de manuales registrados con estado de ingestión
-- Modal de carga con extracción automática de metadatos desde nombre del PDF
-- Formulario editable para título, modelo de robot, versión de controlador e idioma
+- `/admin/manuals` — Listado de manuales con estado de ingestión y progreso. Modal
+  de carga múltiple con título extraído del nombre del PDF, selector de idioma y
+  categorías por archivo. El modal de edición permite cambiar título, notas y
+  categorías (el modelo de robot y la versión de controlador solo se muestran).
+- `/admin/users` — Alta, edición y borrado de usuarios.
+- `/admin/roles` — Permisos por rol.
+- `/admin/settings` — Parámetros de Gemini/RAG ajustables en caliente.
+- `/admin/audit` — Registro de eventos con filtros.
 
-### `/settings` — Configuración de perfil
+### `/settings` y `/profile` — Configuración de perfil
 
 - Edición de nombre y preferencias de idioma
 - Cambio de contraseña con validación de reglas

@@ -41,8 +41,8 @@ La autenticación es por **cookie HttpOnly `rc7_session`** con JWT firmado (HS25
 
 | Método | Ruta | Auth | Descripción · errores |
 |---|---|---|---|
-| `GET` | `/profile/` | `*` | `{ email, display_name, settings }`. |
-| `PUT` | `/profile/` | `*` | Actualiza **`display_name` y `settings`** (el email **no** se cambia). Renueva la cookie. |
+| `GET` | `/profile` | `*` | `{ email, display_name, settings }`. |
+| `PUT` | `/profile` | `*` | Actualiza **`display_name` y `settings`** (el email **no** se cambia). Renueva la cookie. |
 | `POST` | `/profile/password` | `*` | Cambia contraseña. **400** si la actual es incorrecta, si la nueva es igual a la actual, o si no cumple las reglas (8-16 chars, mayúscula, minúscula, dígito, símbolo). |
 
 > Nota: el endpoint de contraseña es **`POST`** (no `PUT`).
@@ -65,7 +65,7 @@ La autenticación es por **cookie HttpOnly `rc7_session`** con JWT firmado (HS25
 **Eventos SSE:**
 ```
 data: {"type":"chunk","content":"<texto parcial del JSON>"}
-data: {"type":"done","summary":"...","pac_code":"MOVE P,P1  ' fuente: S1","references":[{"title":"...","page":"42"}]}
+data: {"type":"done","summary":"...","pac_code":"MOVE P,P1  ' fuente: S1","references":[{"source_id":"S1","title":"...","page":"42"}],"advisories":["..."]}
 data: {"type":"error","message":"Pipeline fallido"}     ← si falla a mitad del stream
 ```
 Tras `done`, el endpoint persiste la entrada de historial (podando a `history_max_entries`) y
