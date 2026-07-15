@@ -174,11 +174,13 @@ def serialize_manual_review_summary(
 
 
 @router.get("", response_model=ManualListResponse)
-async def list_manuals(
+def list_manuals(
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
     storage_service: ManualStorageService = Depends(get_manual_storage_service),
 ) -> ManualListResponse:
+    # Sync def on purpose: the sha256 backfill below downloads from MinIO, and a
+    # blocking call in an async route would stall the whole event loop.
     manuals = list(
         db_session.scalars(
             select(Manual).order_by(Manual.created_at.desc(), Manual.id.desc())

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 from dataclasses import dataclass
+from functools import lru_cache
 from hashlib import sha1
 
 from google import genai
@@ -32,6 +33,8 @@ class ChunkReviewResult:
     boundary_quality_score: float | None = None
     reason: str | None = None
     raw_response: str | None = None
+    # Size of the prompt actually sent to Gemini; drives the input-token estimate.
+    prompt_chars: int | None = None
 
 
 @dataclass(slots=True)
@@ -176,14 +179,11 @@ def build_review_metrics_summary(
         if result.boundary_quality_score is not None
     ]
 
+    # Input tokens come from the prompt sent to Gemini, not from its response.
+    # Estimated at the usual ~4 chars/token.
     estimated_input_tokens = sum(
-        max(1, len(result.raw_response or "") // 4) for result in review_results
+        max(1, (result.prompt_chars or 0) // 4) for result in review_results
     )
-    if reviewed:
-        estimated_input_tokens = max(
-            estimated_input_tokens,
-            len(reviewed) * settings.semantic_review_min_chars // 4,
-        )
     estimated_output_tokens = len(review_results) * max(
         1, settings.semantic_review_estimated_output_tokens
     )
@@ -211,6 +211,18 @@ def build_review_metrics_summary(
         estimated_input_tokens=estimated_input_tokens,
         estimated_output_tokens=estimated_output_tokens,
         estimated_cost_usd=round(estimated_cost_usd, 8),
+    )
+
+
+@lru_cache(maxsize=4)
+def _build_client(api_key: str, timeout_seconds: int) -> genai.Client:
+    # Cached: a fresh Client per call would discard the httpx connection pool and
+    # force a TLS handshake on every review — one per chunk, for the whole manual.
+    return genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(
+            timeout=timeout_seconds * 1000,  # SDK expects ms
+        ),
     )
 
 
@@ -262,6 +274,7 @@ class GeminiSemanticReviewer:
             boundary_quality_score=_to_float(payload.get("boundary_quality")),
             reason=_normalize_text(payload.get("reason")),
             raw_response=response_text,
+            prompt_chars=len(prompt),
         )
 
     def regenerate_chunk(self, chunk: TextChunk) -> str | None:
@@ -316,12 +329,7 @@ class GeminiSemanticReviewer:
     def _call_gemini(
         self, prompt: str, *, response_mime_type: str = "application/json"
     ) -> str:
-        client = genai.Client(
-            api_key=self._api_key,
-            http_options=types.HttpOptions(
-                timeout=self._timeout_seconds * 1000,  # SDK expects ms
-            ),
-        )
+        client = _build_client(self._api_key, self._timeout_seconds)
         try:
             response = client.models.generate_content(
                 model=self._model,

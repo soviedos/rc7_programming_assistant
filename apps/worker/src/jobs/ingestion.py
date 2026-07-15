@@ -42,7 +42,7 @@ def calculate_manual_timeout_seconds(manual: Manual) -> int:
 
     size_bytes = max(0, int(manual.size_bytes or 0))
     if size_bytes == 0 or extra_per_mb == 0:
-        return min(base_timeout, max_timeout)
+        return base_timeout
 
     size_mb = ceil(size_bytes / float(1024 * 1024))
     extra_mb = max(0, size_mb - base_coverage_mb)
@@ -81,12 +81,12 @@ def _split_text_for_autofix(text: str) -> tuple[str, str] | None:
         return None
 
     midpoint = len(text) // 2
-    split_index = text.rfind("\n\n", 0, midpoint + 1)
+    # Both separators ("\n\n" and ". ") are two characters long.
     separator_len = 2
 
+    split_index = text.rfind("\n\n", 0, midpoint + 1)
     if split_index == -1:
         split_index = text.rfind(". ", 0, midpoint + 1)
-        separator_len = 2
 
     if split_index == -1:
         split_index = midpoint
@@ -334,10 +334,10 @@ def build_chunk_review_observations(
         selections = selections[:max_reviews]
         selections.sort(key=lambda s: s.chunk_index)
 
-    selected_by_index = {selection.chunk_index: selection for selection in selections}
     review_results: list[ChunkReviewResult] = []
 
-    for chunk_index, selection in selected_by_index.items():
+    for selection in selections:
+        chunk_index = selection.chunk_index
         chunk = chunks[chunk_index]
         try:
             reviewed = reviewer.review_chunk(manual, chunk_index, chunk)
