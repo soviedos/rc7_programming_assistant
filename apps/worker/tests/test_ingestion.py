@@ -3,6 +3,8 @@ from contextlib import contextmanager
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from rc7_shared_db.models import EMBEDDING_DIM
+
 from src.db.models import Manual, ManualChunk, ManualChunkReview, ManualReviewSummary
 from src.chunking.text import TextChunk
 from src.jobs.ingestion import (
@@ -110,6 +112,13 @@ def test_process_next_pending_manual_indexes_chunks(
     monkeypatch.setattr(
         "src.jobs.ingestion.extract_pdf_text_by_page",
         lambda content: ["MOVE P, HOME\n\nWAIT SIG(1)", "CALL PICK_PART"],
+    )
+    # Sin esto el test llamaría a la API de Gemini de verdad: con una key real
+    # pasa por red (lento y con costo) y sin ella devuelve vacío, y un manual sin
+    # ningún embedding se marca failed.
+    monkeypatch.setattr(
+        "src.jobs.ingestion.embed_texts",
+        lambda texts: [[0.1] * EMBEDDING_DIM for _ in texts],
     )
 
     processed = process_next_pending_manual(
