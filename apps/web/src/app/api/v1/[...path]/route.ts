@@ -12,6 +12,10 @@ export const maxDuration = 300;
 
 const INTERNAL_API = process.env.INTERNAL_API_URL ?? "http://api:8000";
 
+// Per the Fetch spec these statuses must carry a null body; passing one (even an
+// empty buffer) makes the Response constructor throw.
+const NULL_BODY_STATUSES = new Set([101, 103, 204, 205, 304]);
+
 async function proxy(req: NextRequest, path: string): Promise<NextResponse> {
   const targetUrl = `${INTERNAL_API}/api/v1/${path}${req.nextUrl.search}`;
 
@@ -26,9 +30,11 @@ async function proxy(req: NextRequest, path: string): Promise<NextResponse> {
   const cookie = req.headers.get("cookie");
   if (cookie) headers["Cookie"] = cookie;
 
+  // arrayBuffer, not text(): text() decodes as UTF-8 and replaces every invalid
+  // sequence with U+FFFD, which corrupts multipart PDF uploads and inflates them.
   const body =
     req.method !== "GET" && req.method !== "HEAD"
-      ? await req.text()
+      ? await req.arrayBuffer()
       : undefined;
 
   const upstream = await fetch(targetUrl, {
@@ -56,7 +62,9 @@ async function proxy(req: NextRequest, path: string): Promise<NextResponse> {
   }
 
   // Use arrayBuffer to preserve binary data (e.g. PDFs) without UTF-8 corruption
-  const data = await upstream.arrayBuffer();
+  const data = NULL_BODY_STATUSES.has(upstream.status)
+    ? null
+    : await upstream.arrayBuffer();
 
   const responseHeaders = new Headers({
     "Content-Type": upstream.headers.get("content-type") ?? "application/json",
