@@ -23,7 +23,7 @@ def normalize_profile_settings(raw_settings: dict[str, str] | None) -> ProfileSe
 
 
 @router.get("", response_model=ProfileResponse)
-async def get_profile(request: Request, db_session: DbSession) -> ProfileResponse:
+def get_profile(request: Request, db_session: DbSession) -> ProfileResponse:
     user = get_current_user(request, db_session)
     return ProfileResponse(
         email=user.email,
@@ -33,7 +33,7 @@ async def get_profile(request: Request, db_session: DbSession) -> ProfileRespons
 
 
 @router.put("", response_model=ProfileResponse)
-async def update_profile(
+def update_profile(
     payload: UpdateProfileRequest,
     request: Request,
     response: Response,
@@ -58,7 +58,7 @@ async def update_profile(
 
 
 @router.post("/password", response_model=ProfileActionResponse)
-async def change_password(
+def change_password(
     payload: ChangePasswordRequest,
     request: Request,
     db_session: DbSession,

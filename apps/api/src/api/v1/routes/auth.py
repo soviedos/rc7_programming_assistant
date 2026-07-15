@@ -22,7 +22,7 @@ router = APIRouter()
 
 
 @router.get("/providers", response_model=LoginOptionsResponse)
-async def auth_providers() -> LoginOptionsResponse:
+def auth_providers() -> LoginOptionsResponse:
     return LoginOptionsResponse(
         providers=["google"],
         note="El login con Google se implementara en una siguiente iteracion.",
@@ -30,7 +30,7 @@ async def auth_providers() -> LoginOptionsResponse:
 
 
 @router.post("/login", response_model=SessionResponse)
-async def login(
+def login(
     payload: LoginRequest,
     request: Request,
     response: Response,
@@ -72,14 +72,14 @@ async def login(
 
 
 @router.get("/me", response_model=SessionResponse)
-async def me(request: Request, db_session: DbSession) -> SessionResponse:
+def me(request: Request, db_session: DbSession) -> SessionResponse:
     user = get_current_user(request, db_session)
     active_role = get_active_role(request, user)
     return build_session_response(user, active_role)
 
 
 @router.post("/switch-role", response_model=SessionResponse)
-async def switch_role(
+def switch_role(
     payload: RoleSwitchRequest,
     request: Request,
     response: Response,
@@ -100,7 +100,7 @@ async def switch_role(
 
 
 @router.post("/logout", response_model=LogoutResponse)
-async def logout(
+def logout(
     request: Request, response: Response, db_session: DbSession
 ) -> LogoutResponse:
     try:

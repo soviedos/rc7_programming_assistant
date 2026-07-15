@@ -227,7 +227,7 @@ def generate_code(
 
 
 @router.get("/history", response_model=ChatHistoryListResponse)
-async def list_chat_history(
+def list_chat_history(
     request: Request,
     db: DbSession,
     limit: int = 50,
@@ -260,7 +260,7 @@ async def list_chat_history(
 
 
 @router.delete("/history/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_chat_history_item(
+def delete_chat_history_item(
     item_id: int,
     request: Request,
     db: DbSession,

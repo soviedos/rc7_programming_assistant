@@ -203,7 +203,7 @@ def list_manuals(
 
 
 @router.get("/review-summaries", response_model=ManualReviewSummaryListResponse)
-async def list_manual_review_summaries(
+def list_manual_review_summaries(
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
 ) -> ManualReviewSummaryListResponse:
@@ -219,7 +219,7 @@ async def list_manual_review_summaries(
 
 
 @router.get("/{manual_id}", response_model=ManualResponse)
-async def get_manual(
+def get_manual(
     manual_id: int,
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
@@ -235,7 +235,7 @@ async def get_manual(
 
 
 @router.get("/{manual_id}/file")
-async def open_manual_file(
+def open_manual_file(
     manual_id: int,
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
@@ -262,7 +262,7 @@ async def open_manual_file(
 
 
 @router.post("", response_model=ManualResponse, status_code=status.HTTP_201_CREATED)
-async def upload_manual(
+def upload_manual(
     title: Annotated[str, Form(min_length=3, max_length=255)],
     file: Annotated[UploadFile, File(...)],
     db_session: DbSession,
@@ -284,7 +284,9 @@ async def upload_manual(
             detail="Solo se permiten archivos PDF.",
         )
 
-    content = await file.read()
+    # file.file (sync) instead of `await file.read()`: this route is a sync def, so
+    # FastAPI runs it in the threadpool where blocking reads are fine.
+    content = file.file.read()
     if not content:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -364,7 +366,7 @@ async def upload_manual(
 
 
 @router.put("/{manual_id}", response_model=ManualResponse)
-async def update_manual(
+def update_manual(
     manual_id: int,
     payload: ManualUpdateRequest,
     db_session: DbSession,
@@ -392,7 +394,7 @@ async def update_manual(
 
 
 @router.post("/{manual_id}/retry", response_model=ManualResponse)
-async def retry_manual(
+def retry_manual(
     manual_id: int,
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
@@ -418,7 +420,7 @@ async def retry_manual(
 
 
 @router.post("/{manual_id}/cancel", response_model=ManualResponse)
-async def cancel_manual(
+def cancel_manual(
     manual_id: int,
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
@@ -451,7 +453,7 @@ async def cancel_manual(
 
 
 @router.post("/cleanup-stale-processing", response_model=StaleProcessingResult)
-async def cleanup_stale_processing(
+def cleanup_stale_processing(
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
     older_than_minutes: int = Query(
@@ -490,7 +492,7 @@ async def cleanup_stale_processing(
 
 
 @router.delete("/{manual_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_manual(
+def delete_manual(
     manual_id: int,
     db_session: DbSession,
     current_user: User = Depends(get_current_admin_user),

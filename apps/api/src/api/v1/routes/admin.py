@@ -91,7 +91,7 @@ def ensure_not_demoting_last_active_admin(
 
 
 @router.get("/status", response_model=AdminStatusResponse)
-async def admin_status(
+def admin_status(
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
 ) -> AdminStatusResponse:
@@ -115,7 +115,7 @@ async def admin_status(
 
 
 @router.get("/roles/permissions", response_model=RolePermissionListResponse)
-async def get_role_permissions(
+def get_role_permissions(
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
 ) -> RolePermissionListResponse:
@@ -136,7 +136,7 @@ async def get_role_permissions(
     response_model=RolePermissionResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_role_permission(
+def create_role_permission(
     payload: RolePermissionCreateRequest,
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
@@ -165,7 +165,7 @@ async def create_role_permission(
 
 
 @router.put("/roles/permissions/{permission_id}", response_model=RolePermissionResponse)
-async def update_role_permission(
+def update_role_permission(
     permission_id: int,
     payload: RolePermissionUpdateRequest,
     db_session: DbSession,
@@ -192,7 +192,7 @@ async def update_role_permission(
 @router.delete(
     "/roles/permissions/{permission_id}", status_code=status.HTTP_204_NO_CONTENT
 )
-async def delete_role_permission(
+def delete_role_permission(
     permission_id: int,
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
@@ -209,7 +209,7 @@ async def delete_role_permission(
 
 
 @router.get("/users", response_model=AdminUserListResponse)
-async def list_users(
+def list_users(
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
 ) -> AdminUserListResponse:
@@ -224,7 +224,7 @@ async def list_users(
 
 
 @router.get("/users/{user_id}", response_model=AdminUserResponse)
-async def get_user(
+def get_user(
     user_id: int,
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
@@ -241,7 +241,7 @@ async def get_user(
 @router.post(
     "/users", response_model=AdminUserResponse, status_code=status.HTTP_201_CREATED
 )
-async def create_user(
+def create_user(
     payload: AdminUserCreateRequest,
     db_session: DbSession,
     current_admin: User = Depends(get_current_admin_user),
@@ -287,7 +287,7 @@ async def create_user(
 
 
 @router.put("/users/{user_id}", response_model=AdminUserResponse)
-async def update_user(
+def update_user(
     user_id: int,
     payload: AdminUserUpdateRequest,
     db_session: DbSession,
@@ -344,7 +344,7 @@ async def update_user(
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_user(
+def delete_user(
     user_id: int,
     db_session: DbSession,
     current_admin: User = Depends(get_current_admin_user),
