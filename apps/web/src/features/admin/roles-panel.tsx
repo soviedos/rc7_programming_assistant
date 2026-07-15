@@ -20,8 +20,7 @@ import {
   type RolePermission,
 } from "@/lib/roles";
 import { cn } from "@/lib/utils";
-
-type FlashMessage = { kind: "success" | "error"; text: string } | null;
+import type { FlashMessage } from "@/lib/ui";
 
 type PermissionFormState = {
   key: string;

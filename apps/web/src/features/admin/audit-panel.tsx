@@ -8,27 +8,24 @@ import {
   type AuditLogEntry,
   type AuditLogFilters,
 } from "@/lib/admin-audit";
+import type { FlashMessage } from "@/lib/ui";
 
-type FlashMessage = { kind: "success" | "error"; text: string } | null;
-
+// Debe reflejar los event_type que la API emite vía log_event. Un tipo no listado
+// aquí se sigue mostrando (EventBadge cae a gris), pero no se puede filtrar.
 const EVENT_TYPE_COLORS: Record<string, string> = {
   AUTH_LOGIN: "bg-green-100 text-green-800",
   AUTH_LOGOUT: "bg-slate-100 text-slate-700",
   AUTH_FAILED: "bg-red-100 text-red-800",
   ADMIN_USER_CREATED: "bg-blue-100 text-blue-800",
   ADMIN_USER_UPDATED: "bg-blue-100 text-blue-800",
-  ADMIN_USER_TOGGLED: "bg-orange-100 text-orange-800",
-  ADMIN_ROLE_CHANGED: "bg-purple-100 text-purple-800",
+  ADMIN_USER_DELETED: "bg-red-100 text-red-800",
   MANUAL_UPLOADED: "bg-teal-100 text-teal-800",
   MANUAL_UPDATED: "bg-teal-100 text-teal-800",
   MANUAL_DELETED: "bg-red-100 text-red-800",
-  INGESTION_STARTED: "bg-yellow-100 text-yellow-800",
-  INGESTION_COMPLETED: "bg-green-100 text-green-800",
-  INGESTION_FAILED: "bg-red-100 text-red-800",
   SETTING_UPDATED: "bg-indigo-100 text-indigo-800",
   SETTING_RESET: "bg-indigo-100 text-indigo-800",
   CHAT_QUERY: "bg-sky-100 text-sky-800",
-  SYSTEM_ERROR: "bg-red-200 text-red-900",
+  CHAT_QUERY_FAILED: "bg-orange-100 text-orange-800",
 };
 
 function EventBadge({ eventType }: { eventType: string }) {
@@ -61,25 +58,7 @@ function MetadataCell({ data }: { data: Record<string, unknown> | null }) {
   );
 }
 
-const EVENT_TYPES = [
-  "AUTH_LOGIN",
-  "AUTH_LOGOUT",
-  "AUTH_FAILED",
-  "ADMIN_USER_CREATED",
-  "ADMIN_USER_UPDATED",
-  "ADMIN_USER_TOGGLED",
-  "ADMIN_ROLE_CHANGED",
-  "MANUAL_UPLOADED",
-  "MANUAL_UPDATED",
-  "MANUAL_DELETED",
-  "INGESTION_STARTED",
-  "INGESTION_COMPLETED",
-  "INGESTION_FAILED",
-  "SETTING_UPDATED",
-  "SETTING_RESET",
-  "CHAT_QUERY",
-  "SYSTEM_ERROR",
-];
+const EVENT_TYPES = Object.keys(EVENT_TYPE_COLORS);
 
 export function AuditPanel() {
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);

@@ -33,10 +33,9 @@ import {
   type ManualDocument,
   type ManualReviewSummary,
 } from "@/lib/manuals";
+import type { FlashMessage } from "@/lib/ui";
 
 // ── Types ──────────────────────────────────────────────────────────
-
-type FlashMessage = { kind: "success" | "error"; text: string } | null;
 
 type ManualFormState = {
   id: string;

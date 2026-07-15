@@ -9,8 +9,7 @@ import {
   updateSetting,
   type SystemSetting,
 } from "@/lib/admin-settings";
-
-type FlashMessage = { kind: "success" | "error"; text: string } | null;
+import type { FlashMessage } from "@/lib/ui";
 
 const NUMERIC_KEYS = new Set([
   "gemini_max_tokens",

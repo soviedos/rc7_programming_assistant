@@ -15,8 +15,7 @@ import {
   type PreferredLanguage,
   type UserProfile,
 } from "@/lib/profile";
-
-type FlashMessage = { kind: "success" | "error"; text: string } | null;
+import type { FlashMessage } from "@/lib/ui";
 
 const LANGUAGES: Array<{ value: PreferredLanguage; label: string }> = [
   { value: "es", label: "Español" },

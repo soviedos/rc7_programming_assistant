@@ -12,8 +12,7 @@ import {
   type AdminUser,
   type UserRole,
 } from "@/lib/admin-users";
-
-type FlashMessage = { kind: "success" | "error"; text: string } | null;
+import type { FlashMessage } from "@/lib/ui";
 
 type UserFormState = {
   email: string;

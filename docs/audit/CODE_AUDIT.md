@@ -146,10 +146,11 @@ También se unificó `gemini_timeout_seconds`, que era `8` en el worker y `300` 
 usan `300`. Con revisión completa cada chunk es una llamada a Gemini, y 8 s convertía cualquier
 llamada lenta en `review_status="error"` en silencio.
 
-### C3 — `delete_user` audita como `ADMIN_USER_TOGGLED` · `apps/api/src/api/v1/routes/admin.py:377` · **baja** · cambia comportamiento → propuesta
-El borrado de usuario registra `event_type="ADMIN_USER_TOGGLED"` con descripción "Usuario eliminado",
-mientras crear/actualizar usan `ADMIN_USER_CREATED`/`ADMIN_USER_UPDATED`. Propuesta: usar
-`ADMIN_USER_DELETED`. No se aplica porque cambia el valor registrado (filtros de auditoría existentes).
+### C3 — `delete_user` audita como `ADMIN_USER_TOGGLED` · **baja** · corregido
+El borrado de usuario registraba `event_type="ADMIN_USER_TOGGLED"` con descripción "Usuario
+eliminado", mientras crear/actualizar usan `ADMIN_USER_CREATED`/`ADMIN_USER_UPDATED`. Ya emite
+`ADMIN_USER_DELETED` ([routes/admin.py](../../apps/api/src/api/v1/routes/admin.py)). El catálogo de
+tipos del panel de auditoría se sincronizó con lo que la API emite realmente.
 
 ---
 
