@@ -12,7 +12,17 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY apps/web ./
 RUN npm run build
 
-# ─── Stage 3: Production runner ───────────────────────────────────────────────
+# ─── Stage 3: Test ────────────────────────────────────────────────────────────
+# Separate from `builder` so the suite runs without the production build. The
+# runner stage carries no devDependencies, so vitest cannot live there.
+FROM node:22-alpine AS test
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+COPY --from=deps /app/node_modules ./node_modules
+COPY apps/web ./
+CMD ["npm", "test"]
+
+# ─── Stage 4: Production runner ───────────────────────────────────────────────
 FROM node:22-alpine AS runner
 WORKDIR /app
 

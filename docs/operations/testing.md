@@ -59,8 +59,13 @@ docker compose exec api python -m pytest
 | Perfil | Validación de contraseñas, helpers de perfil |
 | API client | Normalización de errores, funciones de autenticación |
 
+El contenedor `web` sirve el build standalone de producción y no incluye
+devDependencies, así que vitest no vive ahí. La suite corre en el servicio
+`web-test` (etapa `test` de `infra/docker/web.Dockerfile`), que está bajo el
+perfil `test` y por eso no arranca con `docker compose up`:
+
 ```bash
-docker compose exec web npm test
+docker compose run --rm web-test
 ```
 
 ---
@@ -94,7 +99,7 @@ Para ejecutar todas las suites desde la raíz del proyecto:
 
 ```bash
 docker compose exec api python -m pytest
-docker compose exec web npm test
+docker compose run --rm web-test
 docker compose exec worker python -m pytest
 ```
 

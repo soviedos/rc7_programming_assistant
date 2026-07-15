@@ -33,7 +33,6 @@ describe("ProtectedRoute", () => {
         displayName: "Sergio Oviedo",
         role: "admin",
         availableRoles: ["admin", "user"],
-        redirectPath: "/admin/manuals",
       },
       isLoading: false,
     });

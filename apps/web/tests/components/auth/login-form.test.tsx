@@ -94,7 +94,6 @@ describe("LoginForm", () => {
       displayName: "Sergio Oviedo",
       role: "admin",
       availableRoles: ["admin", "user"],
-      redirectPath: "/admin",
     });
 
     render(<LoginForm />);

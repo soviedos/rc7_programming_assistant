@@ -21,6 +21,15 @@ services:
       start_period: 60s
     restart: unless-stopped
 
+  # Frontend test suite. Not part of the stack: `profiles` keeps it out of
+  # `docker compose up`. Run with: docker compose run --rm web-test
+  web-test:
+    profiles: ["test"]
+    build:
+      context: .
+      dockerfile: infra/docker/web.Dockerfile
+      target: test
+
   api:
     build:
       context: .

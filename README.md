@@ -143,6 +143,13 @@ flowchart LR
 - [Docker Compose](https://docs.docker.com/compose/install/) >= 2.20
 - Clave de API de Google Gemini ([obtener aquí](https://aistudio.google.com/))
 
+Todo corre en Docker; no hace falta instalar Node ni Python en la máquina. Si aun
+así se trabaja el frontend fuera de Docker, hay que usar **Node 22 / npm 10**, que
+es lo que fija `infra/docker/web.Dockerfile`: npm 11+ resuelve los paquetes de
+plataforma de forma distinta y rechaza el `package-lock.json` con "can only install
+packages when your package.json and package-lock.json are in sync". En ese caso,
+`npx npm@10.9.8 ci` instala respetando el lock.
+
 ---
 
 ## Inicio rápido
@@ -215,8 +222,9 @@ curl -s http://localhost:8000/api/v1/health/ | python3 -m json.tool
 # Backend (pytest, corre contra BD rc7_test auto-creada)
 docker compose exec api python -m pytest
 
-# Frontend (vitest)
-docker compose exec web npm test
+# Frontend (vitest). El contenedor `web` es el build de producción y no lleva
+# devDependencies: los tests corren en el servicio `web-test`.
+docker compose run --rm web-test
 
 # Worker (pytest)
 docker compose exec worker python -m pytest

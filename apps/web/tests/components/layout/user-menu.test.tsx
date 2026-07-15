@@ -27,7 +27,6 @@ vi.mock("@/features/auth/session-provider", () => ({
       displayName: "Sergio Oviedo",
       role: "admin",
       availableRoles: ["admin", "user"],
-      redirectPath: "/admin/manuals",
     },
     isLoading: false,
     switchRole: mockSwitchRole,

@@ -55,6 +55,9 @@ jobs:
       - name: Run worker tests
         run: docker compose run --rm worker python -m pytest
 
+      - name: Run frontend tests
+        run: docker compose run --rm web-test
+
       - name: Tear down stack
         if: always()
         run: docker compose down -v
