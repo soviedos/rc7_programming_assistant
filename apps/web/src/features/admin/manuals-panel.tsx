@@ -28,6 +28,7 @@ import {
   deleteManual,
   updateManual,
   uploadManual,
+  type DocumentLanguage,
   type ManualCategory,
   type ManualDocument,
   type ManualReviewSummary,
@@ -41,7 +42,13 @@ type ManualFormState = {
   id: string;
   title: string;
   file: File;
+  documentLanguage: DocumentLanguage;
   categories: ManualCategory[];
+};
+
+const LANGUAGE_LABELS: Record<DocumentLanguage, string> = {
+  es: "Español",
+  en: "Inglés",
 };
 
 type EditFormState = {
@@ -198,6 +205,7 @@ function buildQueueItem(file: File): ManualFormState {
     id: `${file.name}-${file.size}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     file,
     title: extractTitleFromFile(file),
+    documentLanguage: "es",
     categories: [],
   };
 }
@@ -285,6 +293,7 @@ function UploadModal({
         await uploadManual({
             title: item.title,
             file: item.file,
+            documentLanguage: item.documentLanguage,
             ...(item.categories.length > 0 && { categories: item.categories }),
           });
         } catch (err) {
@@ -299,6 +308,8 @@ function UploadModal({
               await uploadManual({
                 title: item.title,
                 file: item.file,
+                documentLanguage: item.documentLanguage,
+                ...(item.categories.length > 0 && { categories: item.categories }),
                 asNewVersion: true,
               });
               continue;
@@ -396,6 +407,30 @@ function UploadModal({
                       <p className="text-sm text-ink font-medium truncate">{item.title || item.file.name}</p>
                       <p className="text-[11px] text-soft truncate">{item.file.name}</p>
                       <p className="text-[11px] text-soft">{formatFileSize(item.file.size)}</p>
+                      <label className="mt-2 flex items-center gap-1.5">
+                        <span className="text-[11px] text-soft">Idioma</span>
+                        <select
+                          value={item.documentLanguage}
+                          onChange={(e) =>
+                            setItems((prev) =>
+                              prev.map((i) =>
+                                i.id === item.id
+                                  ? { ...i, documentLanguage: e.target.value as DocumentLanguage }
+                                  : i,
+                              ),
+                            )
+                          }
+                          className="text-[11px] bg-bg border border-border rounded px-1.5 py-0.5 text-ink"
+                        >
+                          {(Object.entries(LANGUAGE_LABELS) as [DocumentLanguage, string][]).map(
+                            ([value, label]) => (
+                              <option key={value} value={value}>
+                                {label}
+                              </option>
+                            ),
+                          )}
+                        </select>
+                      </label>
                       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
                         {(Object.entries(CATEGORY_CONFIG) as [ManualCategory, { label: string; className: string }][]).map(([key, { label }]) => (
                           <label key={key} className="flex items-center gap-1.5 cursor-pointer">

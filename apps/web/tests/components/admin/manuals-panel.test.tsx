@@ -199,10 +199,12 @@ describe("ManualsPanel", () => {
       expect(uploadManual).toHaveBeenNthCalledWith(1, {
         title: "RC7 VP 6242 Programming Guide",
         file: expect.any(File),
+        documentLanguage: "es",
       });
       expect(uploadManual).toHaveBeenNthCalledWith(2, {
         title: "help e",
         file: expect.any(File),
+        documentLanguage: "es",
       });
     });
   });
@@ -308,10 +310,12 @@ describe("ManualsPanel", () => {
       expect(uploadManual).toHaveBeenNthCalledWith(1, {
         title: "RC7 VP 6242 Programming Guide",
         file: expect.any(File),
+        documentLanguage: "es",
       });
       expect(uploadManual).toHaveBeenNthCalledWith(2, {
         title: "RC7 VP 6242 Programming Guide",
         file: expect.any(File),
+        documentLanguage: "es",
         asNewVersion: true,
       });
     });
