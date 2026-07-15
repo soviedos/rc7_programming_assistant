@@ -1,4 +1,4 @@
-import { api } from "@/lib/api-client";
+import { api, getBaseUrl } from "@/lib/api-client";
 import type { ChatConfig } from "@/features/chat/chat-panel";
 
 // ── Types matching the FastAPI schema ──────────────────────────────
@@ -25,13 +25,6 @@ export type ChatApiReference = {
   page: string;
 };
 
-export type ChatApiResponse = {
-  summary: string;
-  pac_code: string;
-  references: ChatApiReference[];
-  advisories: string[];
-};
-
 // ── Helper: map frontend ChatConfig → API request body ────────────
 
 export function buildChatRequest(
@@ -54,21 +47,6 @@ export function buildChatRequest(
     expansion_io_outputs: config.expansionIoOutputs,
     current_code: currentCode,
   };
-}
-
-// ── API call ───────────────────────────────────────────────────────
-
-export async function sendChatMessage(
-  prompt: string,
-  config: ChatConfig,
-  currentCode = "",
-): Promise<ChatApiResponse> {
-  const body = buildChatRequest(prompt, config, currentCode);
-  return api.post<ChatApiResponse>(
-    "/api/v1/chat/generate",
-    body,
-    "Error al consultar el asistente.",
-  );
 }
 
 // ── SSE streaming types ────────────────────────────────────────────
@@ -99,7 +77,7 @@ export async function streamChatMessage(
 ): Promise<void> {
   const body = buildChatRequest(prompt, config, currentCode);
 
-  const response = await fetch("/api/v1/chat/generate", {
+  const response = await fetch(`${getBaseUrl()}/api/v1/chat/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

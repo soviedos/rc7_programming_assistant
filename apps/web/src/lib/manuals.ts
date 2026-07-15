@@ -1,4 +1,4 @@
-import { api } from "@/lib/api-client";
+import { api, getBaseUrl } from "@/lib/api-client";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -330,6 +330,5 @@ export async function cleanupStaleProcessing(
 }
 
 export function getManualOpenUrl(manualId: number): string {
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-  return `${baseUrl}/api/v1/manuals/${manualId}/file`;
+  return `${getBaseUrl()}/api/v1/manuals/${manualId}/file`;
 }
