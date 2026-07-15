@@ -21,7 +21,7 @@
 | D1 | Strings de modelo Gemini dispersos/hardcodeados | media | Sí | ✅ Aplicado (centralizados en config) |
 | D2 | `ManualStorageService` duplicado API/worker | baja | Sí | ⚖️ Evaluado · no aplicado |
 | C1 | Seed `system_prompt_pac` contradice trazabilidad de `references` | media | Sí | ✅ Aplicado |
-| C2 | Defaults de código ≠ defaults de `.env.example` | baja | No | Documentado |
+| C2 | Defaults de código ≠ defaults de `.env.example` | baja | No | Corregido |
 | C3 | `delete_user` audita como `ADMIN_USER_TOGGLED` | baja | Sí | ✅ Aplicado (`ADMIN_USER_DELETED`) |
 | S1 | Cap silencioso de 50 candidatos antes del re-rank | baja | Sí | ✅ Aplicado (`rag_candidate_pool`) |
 | S2 | `hnsw.ef_search` no fijado (default 40) | baja | Sí | ✅ Aplicado (`SET LOCAL` por consulta) |
@@ -126,19 +126,25 @@ El system prompt contiene instrucciones contradictorias sobre `references`. Func
 `_resolve_references` corrige del lado servidor, pero confunde al modelo. Propuesta: actualizar el
 texto sembrado (y los settings existentes vía reset) para alinear con la trazabilidad por IDs.
 
-### C2 — Defaults de código ≠ defaults desplegados (`.env.example`) · **baja** · documentado
-Valores por defecto en el código del worker que `.env.example` sobrescribe intencionalmente:
+### C2 — Defaults de código ≠ defaults desplegados (`.env.example`) · **baja** · corregido
+El diseño es revisar el manual completo, pero los defaults del código decían lo contrario y el
+comportamiento correcto dependía de que `docker-compose.yml` cargara `.env.example` como `env_file`
+antes que `.env`. Quien leyera solo `config.py` —o corriera el worker con otro `.env`— obtenía
+muestreo al 10%, tope de 100 revisiones y un timeout de 420 s que no alcanza para revisar todos los
+chunks de un manual grande.
 
-| Setting | Default código | `.env.example` |
-|---|---|---|
-| `worker_manual_timeout_seconds` | `420` ([config.py:16](../../apps/worker/src/core/config.py#L16)) | `7200` |
-| `worker_manual_timeout_max_seconds` | `1800` ([config.py:19](../../apps/worker/src/core/config.py#L19)) | `21600` |
-| `semantic_review_sample_rate` | `0.1` ([config.py:24](../../apps/worker/src/core/config.py#L24)) | `1.0` |
-| `semantic_review_max_reviews_per_manual` | `100` ([config.py:33](../../apps/worker/src/core/config.py#L33)) | `0` (sin tope) |
-| `gemini_timeout_seconds` | `8` ([config.py:22](../../apps/worker/src/core/config.py#L22)) | `300` (vía `.env`) |
+Corregido en dos frentes:
 
-No es un bug (el entorno gobierna), pero quien lea solo `config.py` se llevará una idea equivocada del
-comportamiento real. Documentado en los READMEs y en [DOC_VS_CODE.md](./DOC_VS_CODE.md).
+1. Los defaults del código se alinearon al diseño: `semantic_review_sample_rate=1.0`,
+   `semantic_review_max_reviews_per_manual=0`, `worker_manual_timeout_seconds=7200`,
+   `worker_manual_timeout_max_seconds=21600` ([config.py](../../apps/worker/src/core/config.py)).
+2. Se unificó la carga de entorno: `docker-compose.yml` y `docker-compose.prod.yml` cargan ambos
+   solo `.env`, y `.env.example` volvió a ser plantilla. La configuración operativa vive en el
+   código; los `.env` solo aportan secretos y valores propios de la máquina.
+
+También se unificó `gemini_timeout_seconds`, que era `8` en el worker y `300` en la API: ahora ambos
+usan `300`. Con revisión completa cada chunk es una llamada a Gemini, y 8 s convertía cualquier
+llamada lenta en `review_status="error"` en silencio.
 
 ### C3 — `delete_user` audita como `ADMIN_USER_TOGGLED` · `apps/api/src/api/v1/routes/admin.py:377` · **baja** · cambia comportamiento → propuesta
 El borrado de usuario registra `event_type="ADMIN_USER_TOGGLED"` con descripción "Usuario eliminado",

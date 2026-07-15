@@ -133,7 +133,9 @@ Los resultados agregados por manual se almacenan en `manual_review_summaries` (i
 ### Cobertura de la revisión (variables de entorno del worker)
 
 Por defecto el worker inspecciona **todos** los chunks de cada manual elegible, sin muestreo
-ni tope. Se controla vía `.env.example` (no hardcoded):
+ni tope. Los valores de abajo son los defaults del código
+([config.py](../../apps/worker/src/core/config.py)), así que aplican aunque no exista `.env`;
+sobrescribir solo si se quiere reducir cobertura:
 
 | Variable | Valor por defecto | Efecto |
 |---|---|---|

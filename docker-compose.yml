@@ -42,7 +42,6 @@ services:
       - "--timeout-keep-alive"
       - "120"
     env_file:
-      - .env.example
       - .env
     volumes:
       - ./apps/api:/app
@@ -75,7 +74,6 @@ services:
       context: .
       dockerfile: infra/docker/worker.Dockerfile
     env_file:
-      - .env.example
       - .env
     volumes:
       - ./apps/worker:/app
