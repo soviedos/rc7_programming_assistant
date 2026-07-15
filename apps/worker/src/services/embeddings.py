@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import time
+from functools import lru_cache
 from typing import Sequence
 
 from google import genai
 from google.genai import types
+from rc7_shared_config import PLACEHOLDER
 
 from src.core.config import settings
 from src.utils.logging import log
@@ -18,8 +20,14 @@ _RETRY_LIMIT = 3
 _RETRY_BACKOFF = 2.0  # seconds
 
 
+@lru_cache(maxsize=1)
 def _get_client() -> genai.Client:
-    return genai.Client(api_key=settings.gemini_api_key)
+    return genai.Client(
+        api_key=settings.gemini_api_key,
+        http_options=types.HttpOptions(
+            timeout=settings.gemini_timeout_seconds * 1000,  # SDK expects ms
+        ),
+    )
 
 
 def embed_texts(texts: Sequence[str]) -> list[list[float]]:
@@ -28,6 +36,12 @@ def embed_texts(texts: Sequence[str]) -> list[list[float]]:
     Processes in batches and retries on transient errors.
     Returns an empty list for each text that ultimately fails.
     """
+    if settings.gemini_api_key.strip() in {PLACEHOLDER, ""}:
+        # Without this the batch would retry three times and store NULL embeddings
+        # without ever saying why.
+        log("worker", "GEMINI_API_KEY no configurada: no se generaran embeddings.")
+        return [[] for _ in texts]
+
     client = _get_client()
     results: list[list[float]] = []
 

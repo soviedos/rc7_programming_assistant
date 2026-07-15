@@ -203,7 +203,7 @@ def get_setting(db: Session, key: str) -> SystemSetting | None:
 def get_setting_value(db: Session, key: str, fallback: str) -> str:
     """Return the string value for *key*, or *fallback* on any failure."""
     try:
-        row = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
+        row = get_setting(db, key)
         if row is not None:
             return row.value
     except Exception:
@@ -226,7 +226,7 @@ def update_setting(
     updated_by: int | None = None,
 ) -> SystemSetting | None:
     """Update an existing setting. Returns None if the key does not exist."""
-    row = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
+    row = get_setting(db, key)
     if row is None:
         return None
     row.value = value
@@ -239,7 +239,7 @@ def update_setting(
 def reset_to_defaults(db: Session) -> None:
     """Upsert all default values, restoring any customised settings."""
     for key, (value, description) in DEFAULT_SETTINGS.items():
-        row = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
+        row = get_setting(db, key)
         if row is None:
             db.add(SystemSetting(key=key, value=value, description=description))
         else:
@@ -250,7 +250,7 @@ def reset_to_defaults(db: Session) -> None:
 def seed_if_empty(db: Session) -> None:
     """Insert default settings only for keys that don't exist yet."""
     for key, (value, description) in DEFAULT_SETTINGS.items():
-        existing = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
+        existing = get_setting(db, key)
         if existing is None:
             db.add(SystemSetting(key=key, value=value, description=description))
     db.commit()
@@ -281,9 +281,7 @@ def fix_legacy_io_assignment_prompt(db: Session) -> bool:
     (no-op once the legacy substring is gone), and safe when the row is absent.
     Returns ``True`` only when a row was actually updated.
     """
-    row = db.scalar(
-        select(SystemSetting).where(SystemSetting.key == "system_prompt_pac")
-    )
+    row = get_setting(db, "system_prompt_pac")
     if row is None or _LEGACY_IO_ASSIGN not in row.value:
         return False
     row.value = row.value.replace(_LEGACY_IO_ASSIGN, _FIXED_IO_ASSIGN)

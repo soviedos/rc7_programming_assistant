@@ -31,6 +31,8 @@ class ManualStorageService:
         )
 
     def ensure_bucket(self) -> None:
+        """Create the bucket if missing. Only upload needs this: reading or
+        deleting from a bucket that does not exist must fail, not create it."""
         try:
             if not self.client.bucket_exists(self.bucket_name):
                 self.client.make_bucket(self.bucket_name)
@@ -58,8 +60,6 @@ class ManualStorageService:
             ) from exc
 
     def download_manual(self, storage_key: str) -> bytes:
-        self.ensure_bucket()
-
         try:
             response = self.client.get_object(self.bucket_name, storage_key)
             try:
@@ -73,8 +73,6 @@ class ManualStorageService:
             ) from exc
 
     def delete_manual(self, storage_key: str) -> None:
-        self.ensure_bucket()
-
         try:
             self.client.remove_object(self.bucket_name, storage_key)
         except MinioException as exc:

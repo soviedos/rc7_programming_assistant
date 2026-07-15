@@ -56,6 +56,28 @@ def serialize_role_permission(permission: RolePermission) -> RolePermissionRespo
     )
 
 
+def get_user_or_404(db_session: DbSession, user_id: int) -> User:
+    user = db_session.get(User, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontro el usuario solicitado.",
+        )
+    return user
+
+
+def get_role_permission_or_404(
+    db_session: DbSession, permission_id: int
+) -> RolePermission:
+    permission = db_session.get(RolePermission, permission_id)
+    if not permission:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontro el permiso solicitado.",
+        )
+    return permission
+
+
 def count_active_admins(db_session: DbSession) -> int:
     return (
         db_session.scalar(
@@ -171,12 +193,7 @@ def update_role_permission(
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
 ) -> RolePermissionResponse:
-    permission = db_session.get(RolePermission, permission_id)
-    if not permission:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No se encontro el permiso solicitado.",
-        )
+    permission = get_role_permission_or_404(db_session, permission_id)
 
     permission.name = payload.name.strip()
     permission.description = payload.description.strip()
@@ -197,12 +214,7 @@ def delete_role_permission(
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
 ) -> None:
-    permission = db_session.get(RolePermission, permission_id)
-    if not permission:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No se encontro el permiso solicitado.",
-        )
+    permission = get_role_permission_or_404(db_session, permission_id)
 
     db_session.delete(permission)
     db_session.commit()
@@ -229,12 +241,7 @@ def get_user(
     db_session: DbSession,
     _: User = Depends(get_current_admin_user),
 ) -> AdminUserResponse:
-    user = db_session.get(User, user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No se encontro el usuario solicitado.",
-        )
+    user = get_user_or_404(db_session, user_id)
     return serialize_user(user)
 
 
@@ -293,12 +300,7 @@ def update_user(
     db_session: DbSession,
     current_admin: User = Depends(get_current_admin_user),
 ) -> AdminUserResponse:
-    user = db_session.get(User, user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No se encontro el usuario solicitado.",
-        )
+    user = get_user_or_404(db_session, user_id)
 
     if current_admin.id == user.id and (
         payload.role != "admin" or payload.is_active is False
@@ -349,12 +351,7 @@ def delete_user(
     db_session: DbSession,
     current_admin: User = Depends(get_current_admin_user),
 ) -> None:
-    user = db_session.get(User, user_id)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No se encontro el usuario solicitado.",
-        )
+    user = get_user_or_404(db_session, user_id)
 
     if current_admin.id == user.id:
         raise HTTPException(

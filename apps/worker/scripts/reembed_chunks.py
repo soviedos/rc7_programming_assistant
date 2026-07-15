@@ -3,15 +3,16 @@
 Usage (inside the worker container or with the worker venv active):
     python -m scripts.reembed_chunks
 
-The script processes chunks in batches of 100, retrying failed batches once.
-Exits with code 1 if any batch could not be embedded after retries.
+The script processes chunks in batches of 100. Retries are handled inside
+embed_texts (3 attempts with backoff per batch); a batch that still fails leaves
+its embeddings as NULL. Exits with code 1 if any batch could not be embedded.
 """
 
 from __future__ import annotations
 
 import sys
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 
 from src.db.models import ManualChunk
 from src.db.session import SessionLocal, initialize_database

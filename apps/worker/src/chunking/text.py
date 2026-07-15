@@ -17,9 +17,8 @@ def build_text_chunks(page_texts: list[str], max_chars: int = 1200) -> list[Text
         if not normalized_text:
             continue
 
+        # normalized_text is non-empty here, so this always yields at least one.
         paragraphs = [paragraph.strip() for paragraph in normalized_text.split("\n\n") if paragraph.strip()]
-        if not paragraphs:
-            paragraphs = [normalized_text]
 
         current_parts: list[str] = []
         current_length = 0
