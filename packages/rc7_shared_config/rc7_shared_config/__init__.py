@@ -9,7 +9,8 @@ from rc7_shared_config.base import (
     PLACEHOLDER,
     WEAK_PASSWORDS,
     SharedSettings,
+    is_placeholder,
 )
 
-__all__ = ["PLACEHOLDER", "WEAK_PASSWORDS", "SharedSettings"]
+__all__ = ["PLACEHOLDER", "WEAK_PASSWORDS", "SharedSettings", "is_placeholder"]
 __version__ = "0.1.0"

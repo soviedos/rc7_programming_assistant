@@ -4,7 +4,8 @@
 #   docker compose -f docker-compose.prod.yml up -d --build
 #
 # Prerequisites:
-#   - .env file with all production values (see .env.prod.example)
+#   - .env file with all production values (see .env.example: plantilla única,
+#     con una nota de qué cambia en un servidor)
 #   - infra/nginx/ssl/fullchain.pem and privkey.pem (TLS certificates)
 # Los logs van a los volúmenes con nombre api_logs/worker_logs, que Docker crea
 # solo: no hay que preparar ningún directorio.

@@ -1,4 +1,9 @@
-from rc7_shared_config import PLACEHOLDER, WEAK_PASSWORDS, SharedSettings
+from rc7_shared_config import (
+    PLACEHOLDER,
+    WEAK_PASSWORDS,
+    SharedSettings,
+    is_placeholder,
+)
 
 
 class Settings(SharedSettings):
@@ -15,9 +20,11 @@ class Settings(SharedSettings):
 
     def production_errors(self) -> list[str]:
         errors = super().production_errors()
-        if self.jwt_secret == PLACEHOLDER:
+        if is_placeholder(self.jwt_secret):
             errors.append("JWT_SECRET must be set to a secure value")
-        if self.bootstrap_admin_password in WEAK_PASSWORDS:
+        if self.bootstrap_admin_password in WEAK_PASSWORDS or is_placeholder(
+            self.bootstrap_admin_password
+        ):
             errors.append(
                 "BOOTSTRAP_ADMIN_PASSWORD must not be empty or a default value"
             )

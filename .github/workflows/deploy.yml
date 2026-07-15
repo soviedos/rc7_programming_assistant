@@ -91,7 +91,7 @@ jobs:
             # Abort early if production env is missing — do not start a broken stack
             if [[ ! -f .env ]]; then
               echo "ERROR: .env not found at ${{ secrets.SERVER_WORKDIR }}/.env" >&2
-              echo "Set it up once with: scp .env.prod.example user@host:$(pwd)/.env && chmod 600 .env" >&2
+              echo "Set it up once with: scp .env.example user@host:$(pwd)/.env && chmod 600 .env (y rellenarlo)" >&2
               exit 1
             fi
 

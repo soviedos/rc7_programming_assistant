@@ -259,7 +259,6 @@ rc7_programming_assistant/
 ├── docker-compose.yml
 ├── docker-compose.prod.yml
 ├── .env.example      # Template de variables para desarrollo
-└── .env.prod.example # Template de variables para producción
 ```
 
 ---

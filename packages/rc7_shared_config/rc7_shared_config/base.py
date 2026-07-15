@@ -5,6 +5,16 @@ PLACEHOLDER = "replace_me"
 WEAK_PASSWORDS = {"postgres", "minioadmin", PLACEHOLDER, ""}
 
 
+def is_placeholder(value: str) -> bool:
+    """True for any value still carrying the template's placeholder.
+
+    Prefix match, not equality: .env.example ships values like
+    ``replace_me_with_a_long_random_secret_min_32_chars``, and an equality check
+    would let the template's own JWT secret through in production.
+    """
+    return value.strip().startswith(PLACEHOLDER)
+
+
 class SharedSettings(BaseSettings):
     """Settings both services need, plus the production secret checks.
 
@@ -48,11 +58,15 @@ class SharedSettings(BaseSettings):
     def production_errors(self) -> list[str]:
         """Misconfigurations that must abort startup outside development."""
         errors: list[str] = []
-        if self.gemini_api_key == PLACEHOLDER:
+        if is_placeholder(self.gemini_api_key):
             errors.append("GEMINI_API_KEY must be set")
-        if self.postgres_password in WEAK_PASSWORDS:
+        if self.postgres_password in WEAK_PASSWORDS or is_placeholder(
+            self.postgres_password
+        ):
             errors.append("POSTGRES_PASSWORD must not use a default/weak value")
-        if self.minio_root_password in WEAK_PASSWORDS:
+        if self.minio_root_password in WEAK_PASSWORDS or is_placeholder(
+            self.minio_root_password
+        ):
             errors.append("MINIO_ROOT_PASSWORD must not use a default/weak value")
         return errors
 

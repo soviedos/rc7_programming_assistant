@@ -57,7 +57,6 @@ rc7_programming_assistant/
 ├── docker-compose.yml
 ├── docker-compose.prod.yml
 ├── .env.example
-├── .env.prod.example
 └── .gitignore
 ```
 

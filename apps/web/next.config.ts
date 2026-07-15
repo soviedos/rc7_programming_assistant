@@ -1,9 +1,12 @@
 import type { NextConfig } from "next";
 
-// Allow hot-reload (HMR) WebSocket connections from specific hosts when
-// accessing the dev server from another machine on the local network.
-// Set NEXT_ALLOWED_DEV_ORIGINS=192.168.x.x in .env (comma-separated for
-// multiple hosts). Leave empty or unset to allow localhost only (default).
+// Allow hot-reload (HMR) WebSocket connections from specific hosts when running
+// `next dev` from another machine on the local network.
+//
+// Only takes effect outside Docker: the `web` container serves the standalone
+// production build (`node server.js`), where allowedDevOrigins is inert, and it
+// has no env_file — so setting NEXT_ALLOWED_DEV_ORIGINS in .env does nothing.
+// To use it, export it in the shell running `next dev` (comma-separated hosts).
 const allowedDevOrigins = process.env.NEXT_ALLOWED_DEV_ORIGINS
   ? process.env.NEXT_ALLOWED_DEV_ORIGINS.split(",").map((h) => h.trim()).filter(Boolean)
   : [];

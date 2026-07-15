@@ -35,7 +35,7 @@ infra/nginx/nginx.conf    # Reverse proxy Nginx
 infra/nginx/ssl/          # Certificados TLS (NO versionar)
 scripts/export-data.sh    # Exporta datos del servidor origen
 scripts/import-data.sh    # Importa datos en el servidor destino
-.env.prod.example         # Template de variables de entorno
+.env.example              # Template único de variables (dev y servidor)
 ```
 
 ---
@@ -45,7 +45,7 @@ scripts/import-data.sh    # Importa datos en el servidor destino
 En el servidor, copiar el template y rellenar todos los valores:
 
 ```bash
-cp .env.prod.example .env
+cp .env.example .env
 ```
 
 Variables obligatorias en producción:
@@ -195,7 +195,7 @@ frágil de secretos multilínea y preserva los overrides propios de esa máquina
 instala una sola vez:
 
 ```bash
-scp .env.prod.example user@host:/ruta/del/proyecto/.env && chmod 600 .env
+scp .env.example user@host:/ruta/del/proyecto/.env && chmod 600 .env   # y rellenarlo
 ```
 
 ```yaml
