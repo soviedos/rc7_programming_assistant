@@ -161,7 +161,7 @@ def get_role_permissions(
 def create_role_permission(
     payload: RolePermissionCreateRequest,
     db_session: DbSession,
-    _: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin_user),
 ) -> RolePermissionResponse:
     normalized_key = payload.key.strip().lower()
     existing = db_session.scalar(
@@ -183,6 +183,15 @@ def create_role_permission(
     db_session.add(permission)
     db_session.commit()
     db_session.refresh(permission)
+    log_event(
+        db_session,
+        "ADMIN_PERMISSION_CREATED",
+        f"Permiso de rol creado: {permission.key}",
+        actor_id=current_admin.id,
+        actor_email=current_admin.email,
+        resource_type="role_permission",
+        resource_id=str(permission.id),
+    )
     return serialize_role_permission(permission)
 
 
@@ -191,7 +200,7 @@ def update_role_permission(
     permission_id: int,
     payload: RolePermissionUpdateRequest,
     db_session: DbSession,
-    _: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin_user),
 ) -> RolePermissionResponse:
     permission = get_role_permission_or_404(db_session, permission_id)
 
@@ -203,6 +212,15 @@ def update_role_permission(
     db_session.add(permission)
     db_session.commit()
     db_session.refresh(permission)
+    log_event(
+        db_session,
+        "ADMIN_PERMISSION_UPDATED",
+        f"Permiso de rol actualizado: {permission.key}",
+        actor_id=current_admin.id,
+        actor_email=current_admin.email,
+        resource_type="role_permission",
+        resource_id=str(permission.id),
+    )
     return serialize_role_permission(permission)
 
 
@@ -212,12 +230,24 @@ def update_role_permission(
 def delete_role_permission(
     permission_id: int,
     db_session: DbSession,
-    _: User = Depends(get_current_admin_user),
+    current_admin: User = Depends(get_current_admin_user),
 ) -> None:
     permission = get_role_permission_or_404(db_session, permission_id)
 
+    # Capturar antes del delete: después el objeto ya no tiene estos valores.
+    deleted_key = permission.key
+    deleted_id = str(permission.id)
     db_session.delete(permission)
     db_session.commit()
+    log_event(
+        db_session,
+        "ADMIN_PERMISSION_DELETED",
+        f"Permiso de rol eliminado: {deleted_key}",
+        actor_id=current_admin.id,
+        actor_email=current_admin.email,
+        resource_type="role_permission",
+        resource_id=deleted_id,
+    )
 
 
 @router.get("/users", response_model=AdminUserListResponse)

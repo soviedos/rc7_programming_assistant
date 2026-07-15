@@ -63,6 +63,9 @@ se registran siempre (columnas `actor_id`, `actor_email`, `resource_type`,
 | `ADMIN_USER_CREATED` | `admin.py` | Admin crea un nuevo usuario | — |
 | `ADMIN_USER_UPDATED` | `admin.py` | Admin actualiza datos de un usuario | — |
 | `ADMIN_USER_DELETED` | `admin.py` | Admin elimina un usuario | — |
+| `ADMIN_PERMISSION_CREATED` | `admin.py` | Admin crea un permiso de rol | — |
+| `ADMIN_PERMISSION_UPDATED` | `admin.py` | Admin actualiza un permiso de rol | — |
+| `ADMIN_PERMISSION_DELETED` | `admin.py` | Admin elimina un permiso de rol | — |
 | `SETTING_UPDATED` | `settings.py` | Admin actualiza el valor de un parámetro | — |
 | `SETTING_RESET` | `settings.py` | Admin restaura todos los parámetros a sus defaults | — |
 | `MANUAL_UPLOADED` | `manuals.py` | Admin sube un manual PDF | — |
