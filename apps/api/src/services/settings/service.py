@@ -203,12 +203,18 @@ DEFAULT_SETTINGS: dict[str, tuple[str, str]] = {
         "Tiempo máximo de espera para llamadas a Gemini (segundos)",
     ),
     "rag_top_k_chunks": (
-        "6",
-        "Número de fragmentos RAG recuperados por consulta",
+        "12",
+        "Número de fragmentos RAG recuperados por consulta. Medido sobre consultas "
+        "reales: con 6 llegaban 2-4 fragmentos útiles y el resto eran portadas y "
+        "prefacios; con 12 llegan 5-7. Subirlo a 18 no aportó más y desborda el "
+        "presupuesto de contexto",
     ),
     "rag_context_budget_chars": (
-        "12000",
-        "Presupuesto de caracteres para el contexto RAG",
+        "16000",
+        "Presupuesto de caracteres para el contexto RAG. Si se agota, los "
+        "fragmentos restantes se descartan EN SILENCIO: debe dar cabida a "
+        "rag_top_k_chunks (12 fragmentos llegan a ~15.500 chars en los casos "
+        "medidos) o recuperar de más no sirve de nada",
     ),
     "rag_candidate_pool": (
         "50",
@@ -388,6 +394,42 @@ _ONE_PROGRAM_RULE = _DEFAULT_PAC_RULES[
         _RESTRICTIONS_ANCHOR
     )
 ]
+
+
+# ── Recuperación: top-k y presupuesto de contexto ──────────────────
+#
+# Medido sobre las consultas reales que fallaron: con top_k=6 llegaban 2-4
+# fragmentos útiles y el resto eran portadas, prefacios y folletos; con 12 llegan
+# 5-7. El presupuesto sube en consecuencia porque _run_rag_phases descarta EN
+# SILENCIO lo que no cabe (break, no continue), así que 12 fragmentos con el
+# presupuesto viejo se habrían recortado a ~9 sin avisar.
+
+_RETRIEVAL_UPGRADES: dict[str, tuple[str, str]] = {
+    # clave: (valor por defecto anterior, valor nuevo)
+    "rag_top_k_chunks": ("6", "12"),
+    "rag_context_budget_chars": ("12000", "16000"),
+}
+
+
+def upgrade_retrieval_defaults(db: Session) -> list[str]:
+    """Sube top-k y presupuesto de contexto SOLO si conservan el default anterior.
+
+    Son ajustes que el admin puede tocar desde la consola, así que un valor
+    distinto del default viejo se respeta: quien lo haya elegido a propósito no
+    debe encontrárselo cambiado tras un despliegue.
+
+    Devuelve las claves actualizadas.
+    """
+    cambiadas: list[str] = []
+    for key, (viejo, nuevo) in _RETRIEVAL_UPGRADES.items():
+        row = get_setting(db, key)
+        if row is None or row.value.strip() != viejo:
+            continue
+        row.value = nuevo
+        cambiadas.append(key)
+    if cambiadas:
+        db.commit()
+    return cambiadas
 
 
 def fix_missing_one_program_rule_prompt(db: Session) -> bool:

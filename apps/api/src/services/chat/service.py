@@ -799,10 +799,17 @@ def _call_gemini_stream(
 
 # ── Shared prompt constants ────────────────────────────────────────
 
+# Fase 1 (HyDE). Su salida NO se le muestra al usuario: solo se embebe para buscar.
+# Por eso imita al manual en vez de responder al usuario — el objetivo es caer en el
+# mismo espacio vectorial que los chunks. Los manuales DENSO son referencias de
+# comandos EN INGLÉS con código PAC; pedir prosa en español producía un texto que no
+# se parecía a ninguna página: el HyDE anterior no contenía ni MOVE L ni DELAY, y la
+# búsqueda acababa en portadas y prefacios.
 _PHASE1_SYSTEM = (
-    "Eres un experto programador de robots industriales Denso RC7. "
-    "Responde en español de forma técnica y detallada. "
-    "Puedes incluir fragmentos de código PAC si son relevantes."
+    "You are the DENSO RC7 PAC programming manual. Answer with the passage that the "
+    "manual would contain for this request: the PAC statements with their syntax and "
+    "short inline comments, in English, as printed in the reference. "
+    "Code first, minimal prose. Do not address the user."
 )
 
 _NO_RAG_NOTE = (

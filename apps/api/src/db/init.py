@@ -219,6 +219,7 @@ def seed_default_settings() -> None:
         fix_legacy_move_prompt,
         fix_missing_one_program_rule_prompt,
         seed_if_empty,
+        upgrade_retrieval_defaults,
     )  # local import avoids circularity
 
     with SessionLocal() as session:
@@ -231,3 +232,6 @@ def seed_default_settings() -> None:
         # Add the one-PROGRAM-per-file rule: without it a multitasking answer
         # pasted into a single file fails with "Plural program names are defined".
         fix_missing_one_program_rule_prompt(session)
+        # Raise top-k and the context budget: with 6 chunks most of the retrieved
+        # context was front matter. Only touches values still at the old default.
+        upgrade_retrieval_defaults(session)

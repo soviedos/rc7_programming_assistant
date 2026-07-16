@@ -28,8 +28,8 @@ Todos los endpoints requieren rol `admin`.
 | `gemini_temperature` | `float` | `0.7` | Temperatura de generación Gemini (0.0–1.0) | Controla la aleatoriedad de las respuestas: 0.0 = determinista, 1.0 = más creativo |
 | `gemini_max_tokens` | `int` | `8192` | Límite de tokens de salida en Gemini (Phase 4 fuerza `response_mime_type=application/json` para emitir JSON puro) | Respuestas truncadas si el modelo alcanza el límite; con Gemini 3.5 Flash se recomienda ≥ 8192 para código PAC completo |
 | `gemini_timeout_seconds` | `int` | `300` | Timeout (segundos) de cada llamada a Gemini. **Ahora se lee** y se propaga al cliente en las 4 fases (fallback al env `GEMINI_TIMEOUT_SECONDS`). | Requests más largos fallan con timeout |
-| `rag_top_k_chunks` | `int` | `6` | Chunks finales (tras re-rank) enviados como contexto | Más chunks = más contexto, más costo de tokens |
-| `rag_context_budget_chars` | `int` | `12000` | Presupuesto de caracteres de contexto enviado a Gemini | Limita el tamaño del contexto RAG en la Fase 4 |
+| `rag_top_k_chunks` | `int` | `12` | Chunks finales (tras re-rank) enviados como contexto | Medido sobre consultas reales: con 6 llegaban 2-4 fragmentos útiles y el resto eran portadas y prefacios; con 12 llegan 5-7. Con 18 no llegó ninguno más y desborda el presupuesto |
+| `rag_context_budget_chars` | `int` | `16000` | Presupuesto de caracteres de contexto enviado a Gemini | Limita el contexto RAG en la Fase 4. **Debe dar cabida a `rag_top_k_chunks`**: al agotarse, los fragmentos restantes se descartan en silencio (`break`), así que subir top-k sin subir esto no sirve de nada |
 | `rag_candidate_pool` | `int` | `50` | Vecinos recuperados de pgvector (`<=>`/HNSW) antes del re-rank por hardware/categoría. También fija `hnsw.ef_search`. | Pool mayor = mejor recall, algo más de cómputo |
 | `system_prompt_pac` | `str` | *(ver abajo)* | Reglas de sintaxis PAC incluidas en el system prompt de Gemini | Define el comportamiento y restricciones del asistente |
 | `history_max_entries` | `int` | `50` | Máximo de entradas de historial de chat por usuario | Al superarse, las entradas más antiguas se eliminan automáticamente |
