@@ -26,12 +26,14 @@ Admin → POST /api/v1/manuals/
              │
              ▼
     [Etapa 2] Chunking estructural  (NO semántico — lo semántico es la etapa 3)
-    build_text_chunks()
+    build_text_chunks() + extract_page_sections()
     ├─ Página por página: un chunk NUNCA cruza de página
     ├─ Empaqueta párrafos (\n\n) hasta 1200 chars — fijo en código, sin ajuste
     ├─ Un párrafo > 1200 chars se corta a ciegas cada 1200 (puede partir palabras)
     ├─ SIN solapamiento: los chunks son disjuntos
-    └─ Cada chunk lleva: texto y su número de página (uno solo)
+    ├─ Anota cada chunk con su sección, leída del outline del PDF. NO influye en
+    │   dónde se corta: solo etiqueta. Ver "Anotación de secciones" más abajo
+    └─ Cada chunk lleva: texto, su número de página (uno solo) y section_title
              │
              ▼
     [Etapa 3] Revisión semántica con Gemini
@@ -46,7 +48,8 @@ Admin → POST /api/v1/manuals/
     embed_texts()
     ├─ Modelo: gemini-embedding-2 (3072 dimensiones)
     ├─ Sin task_type: cada chunk se envuelve en su propio types.Content
-    │   con prefijo "title: none | text: …" (un embedding por chunk)
+    │   con prefijo "title: <sección> | text: …" (un embedding por chunk).
+    │   La sección da contexto real al embedding; "none" si el PDF no trae outline
     ├─ Procesado en lote (batch)
     └─ Timeout por lote configurable
              │
@@ -96,6 +99,41 @@ desde la consola de administración (sin reiniciar el stack):
 | `rag_context_budget_chars` | `12000` | Presupuesto total de caracteres de contexto enviado a Gemini en Fase 4 |
 
 Ver [docs/backend/settings-module.md](../backend/settings-module.md) para la tabla completa.
+
+---
+
+## Anotación de secciones
+
+Los manuales DENSO traen **outline** (marcadores de PDF): la estructura real escrita
+por el fabricante, capítulo → sección → subsección. `extract_page_sections()`
+([parsers/pdf.py](../../apps/worker/src/parsers/pdf.py)) lo lee y mapea cada página
+al título de la sección que la contiene — el título más profundo cuya sección empieza
+en esa página o antes, que es la sección en curso al leer en orden.
+
+Cada chunk se etiqueta con esa sección (`TextChunk.section_title`, persistido en
+`manual_chunks.section_title`). **No cambia dónde se corta**: mismos límites, mismo
+`page_number`. Solo anota. Para qué sirve:
+
+- **Embedding con contexto**: el prefijo pasa de `"title: none | text: …"` a
+  `"title: 9.7 Local Variable | text: …"`. El modelo deja de embeber texto huérfano.
+- **Trazabilidad**: la sección identifica el origen mucho mejor que un número de página.
+
+Es un dato **opcional**: si el PDF no trae outline, `extract_page_sections()` devuelve
+`{}`, `section_title` queda en `NULL` y la ingesta sigue igual. También queda `NULL`
+en las páginas anteriores al primer marcador (portada, copyright, prefacio, índice),
+que no pertenecen a ninguna sección.
+
+> **Los autofixes deben arrastrar `section_title`.** Merge, split y regenerate
+> construyen `TextChunk` nuevos; si no copian la sección, la anotación desaparece en
+> silencio. Ya pasó una vez (13 de 42 chunks la perdían) y hay un test que lo fija:
+> `test_apply_safe_chunk_autofixes_preserva_section_title`.
+
+**Por qué no se trocea POR sección.** Se evaluó cortar en los límites de sección en
+lugar de anotar. Medido sobre los 11 PDFs del corpus, salían **más** chunks (318 → 376
+en Controller.pdf) y peores bordes, porque muchas secciones son cortas y cada una se
+llevaba su propio chunk en vez de empaquetarse con las vecinas. Además habría exigido
+cambiar la barrera del autofix (que hoy usa la página), y `page_start`/`page_end` en la
+trazabilidad. La anotación da el mismo beneficio sin ninguno de esos costos.
 
 ---
 

@@ -33,7 +33,7 @@ flexibilidad de microservicios, adecuado para el volumen actual de manuales DENS
 | Aspecto | Detalle |
 |---|---|
 | Tecnología | Python 3.12 + google-genai SDK + pypdf + SQLAlchemy |
-| Responsabilidades | Ingestión documental: parsing pypdf → chunking semántico → revisión Gemini (todos los chunks) → embeddings → pgvector |
+| Responsabilidades | Ingestión documental: parsing pypdf → chunking estructural (párrafos, anotado con la sección del outline) → revisión Gemini (todos los chunks) → embeddings → pgvector |
 | Coordinación | Polling a PostgreSQL (`status = 'pending'`) con `FOR UPDATE SKIP LOCKED` para reclamar manuales |
 | Resiliencia | Timeout por manual, recuperación automática de manuales atascados en `processing` al reiniciar; límite de 3 crashes consecutivos antes de marcar como `failed` |
 
@@ -58,7 +58,8 @@ propias validaciones.
 
 Base de datos transaccional y vectorial única (imagen `pgvector/pgvector:pg17`).
 Tablas principales: `users`, `manuals`, `manual_chunks` (con columna
-`embedding vector(3072)` + índice HNSW `manual_chunks_embedding_hnsw` sobre cast `halfvec`),
+`embedding vector(3072)` + índice HNSW `manual_chunks_embedding_hnsw` sobre cast `halfvec`,
+y `section_title` con la sección del manual tomada del outline del PDF),
 `manual_chunk_reviews`, `manual_review_summaries`, `chat_history`,
 `role_permissions`, `system_settings`, `audit_log`.
 
@@ -97,7 +98,7 @@ En producción nginx aplica config especial para SSE (`proxy_buffering off`,
 2. Backend registra el documento con estado `pending`
 3. Worker detecta el manual por polling a PostgreSQL
 4. Worker descarga el PDF, extrae texto con pypdf
-5. Chunking semántico respetando estructura del documento
+5. Chunking estructural: párrafos hasta 1200 chars, sin cruzar de página. La estructura del documento (outline) se usa para **anotar** la sección de cada chunk, no para decidir los cortes
 6. Gemini revisa y autocorrige cada chunk
 7. Chunks vectorizados con gemini-embedding-2 (3072 dim) → pgvector `vector(3072)`
 8. Usuario envía consulta + configuración del robot (modelo, controlador, versión)
@@ -132,7 +133,7 @@ pypdf → extract_pdf_text_by_page()
     └─ Extrae texto por página directamente con pypdf
     │
     ▼
-build_text_chunks() → chunking semántico respetando párrafos
+build_text_chunks() → chunking estructural por párrafos + anotación de sección
     │
     ▼
 GeminiSemanticReviewer → revisión de TODOS los chunks (sin muestreo por defecto):

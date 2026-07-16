@@ -78,9 +78,9 @@ flowchart LR
         I2["MinIO upload PDF\nPostgreSQL  status = pending"]:::process
         I3["Worker\nFOR UPDATE SKIP LOCKED\nstatus = processing"]:::process
         I4["pypdf\nextract_pdf_text_by_page()"]:::process
-        I5["build_text_chunks()\nchunking semántico"]:::process
+        I5["build_text_chunks() + extract_page_sections()\nchunking estructural: párrafos hasta 1200 chars\nanota la sección desde el outline del PDF"]:::process
         I6["GeminiSemanticReviewer\nrevisión de TODOS los chunks (sin muestreo)\ncoherence · completeness · boundary"]:::gemini
-        I7["gemini-embedding-2\nbatch · 3072 dimensiones"]:::gemini
+        I7["gemini-embedding-2\nbatch · 3072 dimensiones\nprefijo 'title: <sección> | text: …'"]:::gemini
         I8[("manual_chunks\nstatus = indexed")]:::data
 
         I1 --> I2 --> I3 --> I4 --> I5 --> I6 --> I7 --> I8
