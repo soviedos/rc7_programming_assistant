@@ -148,3 +148,42 @@ def test_prepended_legend_matches_the_references_field() -> None:
         if line.startswith("' S")
     }
     assert en_leyenda == {sid for sid, _, _ in refs}
+
+
+# ── El rótulo debe distinguir "sustenta" de "se consultó" ──────────
+
+
+def test_legend_header_claims_traceability_only_when_the_code_cites() -> None:
+    pac = "PROGRAM p\n    DRIVEA (1, 45)    ' fuente: S2\nEND"
+    out = _prepend_source_legend(pac, _source_map(), _resolve_references(_source_map(), pac))
+
+    assert "' ─── Fuentes (trazabilidad) ───" in out
+    assert "no cita ninguna" not in out
+
+
+def test_legend_header_says_consulted_when_the_code_cites_nothing() -> None:
+    """Medido: ~1 de cada 5 respuestas no cita ninguna fuente.
+
+    Listar las 6 recuperadas bajo "Fuentes (trazabilidad)" las hacía pasar por
+    respaldo de un programa que no las referencia. El fallback se mantiene —para
+    no perder la procedencia— pero rotulado por lo que es.
+    """
+    pac = "PROGRAM p\n    TAKEARM    ' Obtiene el control\nEND"
+    out = _prepend_source_legend(pac, _source_map(), _resolve_references(_source_map(), pac))
+
+    assert "' ─── Fuentes consultadas (el código no cita ninguna) ───" in out
+    assert "no se afirma que lo sustenten" in out
+    assert "' ─── Fuentes (trazabilidad) ───" not in out
+    # Sigue listando las 6: la procedencia no se pierde, solo se rotula bien.
+    assert out.count(" = ") == 6
+
+
+def test_every_legend_line_is_a_valid_pac_comment_in_both_cases() -> None:
+    """El bloque va dentro de un .pac: toda línea debe empezar por apóstrofo."""
+    for pac in (
+        "PROGRAM p\n    X    ' fuente: S2\nEND",
+        "PROGRAM p\n    X\nEND",
+    ):
+        out = _prepend_source_legend(pac, _source_map(), _resolve_references(_source_map(), pac))
+        cabecera = out.split("PROGRAM p")[0].strip().split("\n")
+        assert all(line.startswith("'") for line in cabecera), cabecera

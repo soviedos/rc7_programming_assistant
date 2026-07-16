@@ -111,12 +111,19 @@ def test_prepend_source_legend_builds_deterministic_block() -> None:
 
 
 def test_prepend_source_legend_lists_all_when_code_cites_nothing() -> None:
-    """Sin citas no se deja el programa sin ninguna procedencia."""
+    """Sin citas no se deja el programa sin ninguna procedencia.
+
+    Se listan igual, pero bajo otro rótulo: sin citas la leyenda declara lo
+    CONSULTADO, no lo que sustenta el código. Ver test_chat_source_legend.py.
+    """
     code = "PROGRAM p\n    MOVE P, P1\nEND"
-    lines = _prepend_source_legend(code, _make_source_map()).split("\n")
-    assert lines[1] == "' S1 = Programmer Manual, pág. 12"
-    assert lines[2] == "' S2 = Startup Guide, pág. 45"
-    assert lines[3] == "' S3 = Programmer Manual, pág. 12"
+    out = _prepend_source_legend(code, _make_source_map())
+
+    assert "' ─── Fuentes consultadas (el código no cita ninguna) ───" in out
+    assert "' S1 = Programmer Manual, pág. 12" in out
+    assert "' S2 = Startup Guide, pág. 45" in out
+    assert "' S3 = Programmer Manual, pág. 12" in out
+    assert out.endswith(code)
 
 
 def test_prepend_source_legend_noop_on_empty_code() -> None:

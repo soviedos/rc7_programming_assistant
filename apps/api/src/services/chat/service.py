@@ -175,7 +175,18 @@ def _prepend_source_legend(
     if not pac_code or not legend:
         return pac_code
 
-    block = ["' ─── Fuentes (trazabilidad) ───"]
+    # El rótulo distingue los dos casos, porque afirman cosas distintas: si el
+    # código cita, la leyenda dice en qué se BASA; si no cita (medido: ~1 de cada
+    # 5 respuestas), lista lo que se CONSULTÓ, y llamarlo "trazabilidad" haría
+    # pasar por respaldo unas páginas que el programa no usó.
+    if _cited_source_ids(pac_code):
+        block = ["' ─── Fuentes (trazabilidad) ───"]
+    else:
+        block = [
+            "' ─── Fuentes consultadas (el código no cita ninguna) ───",
+            "' Recuperadas del manual para esta consulta; el programa no las",
+            "' referencia, así que no se afirma que lo sustenten.",
+        ]
     block += [f"' {sid} = {title}, pág. {page}" for sid, title, page in legend]
     block.append("' ──────────────────────────────")
     return "\n".join(block) + "\n" + pac_code
