@@ -144,6 +144,15 @@ Los tres bloques van en el mismo string pac_code, en ese orden. \
 Cada #DEFINE debe incluir el número de señal/índice real y un comentario descriptivo. \
 Las señales de E/S deben corresponder al perfil I/O configurado del robot.
 
+UN PROGRAM POR ARCHIVO — REGLA OBLIGATORIA:
+Un archivo .pac admite EXACTAMENTE una declaración PROGRAM. Dos en el mismo archivo \
+fallan al compilar con "Plural program names are defined", y el RUN que invoque al \
+segundo falla con "Wrong name" porque no existe como archivo propio.
+Si la tarea necesita varios programas (p. ej. multitarea con RUN), emite un bloque \
+' ARCHIVO: <nombre>.pac por cada uno — y DI EN EL SUMMARY, de forma explícita, que \
+cada bloque debe guardarse como un archivo separado del proyecto WinCaps. Quien pegue \
+todos los bloques en un solo archivo obtendrá errores de compilación.
+
 RESTRICCIONES:
 - Genera código PAC libremente usando las reglas de sintaxis de este prompt \
 más el contexto de manuales. Componer secuencias lógicas (pick & place, \
@@ -361,6 +370,47 @@ _JOINT_MOVE_BLOCK = (
     "        MOVE P, J1, S=50             'PTP hasta la pose articular\n"
     '      NO existe el constructor J(...): "J1 = J(45, ...)" da "Type J data op(\'(\')".\n'
 )
+
+
+# ── system_prompt_pac: regla "un PROGRAM por archivo" ─────────────
+#
+# WinCaps III falla con "Plural program names are defined" si un .pac declara
+# dos PROGRAM, y con "Wrong name" en el RUN que invoque al segundo. El prompt
+# pedía los bloques ' ARCHIVO: en un solo pac_code sin advertir que cada uno va
+# a un archivo distinto del proyecto.
+
+_RESTRICTIONS_ANCHOR = "RESTRICCIONES:"
+
+# Derivado del propio default en vez de copiado: así el texto que inserta la
+# migración y el que siembra seed_if_empty NO PUEDEN divergir.
+_ONE_PROGRAM_RULE = _DEFAULT_PAC_RULES[
+    _DEFAULT_PAC_RULES.index("UN PROGRAM POR ARCHIVO") : _DEFAULT_PAC_RULES.index(
+        _RESTRICTIONS_ANCHOR
+    )
+]
+
+
+def fix_missing_one_program_rule_prompt(db: Session) -> bool:
+    """Añade la regla "un PROGRAM por archivo" a un system_prompt_pac guardado.
+
+    El prompt mandaba emitir los bloques ' ARCHIVO: en un único pac_code pero
+    nunca decía que cada uno debe guardarse aparte. Al pedir multitarea el modelo
+    emitía dos PROGRAM y quien los pegaba juntos chocaba con "Plural program names
+    are defined". Inserta el bloque antes de RESTRICCIONES:, que lo sigue.
+
+    Idempotente y no-op si la fila no existe o el ancla no está.
+    """
+    row = get_setting(db, "system_prompt_pac")
+    if row is None:
+        return False
+    if _ONE_PROGRAM_RULE in row.value or _RESTRICTIONS_ANCHOR not in row.value:
+        return False
+
+    row.value = row.value.replace(
+        _RESTRICTIONS_ANCHOR, _ONE_PROGRAM_RULE + _RESTRICTIONS_ANCHOR, 1
+    )
+    db.commit()
+    return True
 
 
 def fix_legacy_move_prompt(db: Session) -> bool:

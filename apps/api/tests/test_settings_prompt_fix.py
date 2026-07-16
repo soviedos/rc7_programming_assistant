@@ -9,8 +9,10 @@ from src.services.settings.service import (
     _DEFAULT_PAC_RULES,
     _LEGACY_IO_ASSIGN,
     _LEGACY_MOVE_BLOCK,
+    _ONE_PROGRAM_RULE,
     fix_legacy_io_assignment_prompt,
     fix_legacy_move_prompt,
+    fix_missing_one_program_rule_prompt,
 )
 
 
@@ -148,3 +150,51 @@ def test_move_fix_is_idempotent(db_session: Session) -> None:
 
 def test_move_fix_is_noop_when_row_absent(db_session: Session) -> None:
     assert fix_legacy_move_prompt(db_session) is False
+
+
+# ── Regla "un PROGRAM por archivo" ─────────────────────────────────
+
+
+def test_default_prompt_teaches_one_program_per_file() -> None:
+    """Sin esta regla, una respuesta de multitarea pegada en un solo archivo
+    falla con "Plural program names are defined" y "Wrong name" en el RUN."""
+    assert "UN PROGRAM POR ARCHIVO" in _DEFAULT_PAC_RULES
+    assert "Plural program names are defined" in _DEFAULT_PAC_RULES
+    # y exige avisarlo en el summary, que es lo que el usuario lee
+    assert "DI EN EL SUMMARY" in _DEFAULT_PAC_RULES
+
+
+def test_one_program_rule_is_derived_from_the_default_verbatim() -> None:
+    """El texto que inserta la migración sale del propio default, no de una copia.
+
+    Es la garantía de que seed_if_empty y la migración no pueden divergir: una
+    constante copiada a mano sí lo haría en cuanto se editara el default.
+    """
+    assert _ONE_PROGRAM_RULE in _DEFAULT_PAC_RULES
+    assert _ONE_PROGRAM_RULE.startswith("UN PROGRAM POR ARCHIVO")
+
+
+def test_one_program_fix_upgrades_an_old_saved_prompt(db_session: Session) -> None:
+    viejo = _DEFAULT_PAC_RULES.replace(_ONE_PROGRAM_RULE, "")
+    _seed_prompt(db_session, viejo)
+    assert "UN PROGRAM POR ARCHIVO" not in viejo
+
+    assert fix_missing_one_program_rule_prompt(db_session) is True
+
+    row = db_session.query(SystemSetting).filter_by(key="system_prompt_pac").one()
+    # Converge exactamente al default: la migración no deja un prompt "parecido".
+    assert row.value == _DEFAULT_PAC_RULES
+
+
+def test_one_program_fix_is_idempotent(db_session: Session) -> None:
+    _seed_prompt(db_session, _DEFAULT_PAC_RULES)
+    assert fix_missing_one_program_rule_prompt(db_session) is False
+
+    row = db_session.query(SystemSetting).filter_by(key="system_prompt_pac").one()
+    assert row.value.count("UN PROGRAM POR ARCHIVO") == 1
+
+
+def test_one_program_fix_is_noop_without_anchor(db_session: Session) -> None:
+    """Un prompt personalizado sin la sección RESTRICCIONES: no se toca."""
+    _seed_prompt(db_session, "PROMPT TOTALMENTE PERSONALIZADO SIN ANCLA")
+    assert fix_missing_one_program_rule_prompt(db_session) is False

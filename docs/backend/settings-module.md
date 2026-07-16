@@ -76,6 +76,12 @@ reglas sintácticas del PAC real tal como aparece en los programas de WinCaps II
   vale como condición en `IF`/`WAIT`), y los helpers `CALL dioWaitAndSet` /
   `CALL dioSetAndWait`
 - Llamadas: `CALL pro2` para programa externo, `GOSUB *Rutina` para subrutina interna
+- **Un `PROGRAM` por archivo**: dos en el mismo `.pac` fallan con "Plural program
+  names are defined", y el `RUN` que invoque al segundo con "Wrong name". Si la tarea
+  necesita varios (p. ej. multitarea con `RUN`), el prompt exige emitir un bloque
+  `' ARCHIVO:` por programa y **avisarlo en el summary** — la respuesta llega como un
+  único string `pac_code`, así que quien la pega entera en un archivo no compila. El
+  advisory `multiple_programs_one_file` lo detecta aunque el modelo lo omita
 
 El valor completo puede consultarse en `GET /api/v1/admin/settings/system_prompt_pac`.
 

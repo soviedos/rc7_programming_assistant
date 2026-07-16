@@ -286,9 +286,50 @@ class _PacAdvisoryRule:
     check: Callable[[list[str], int], str | None]
 
 
+_PROGRAM_DECL = re.compile(r"^[ \t]*PROGRAM[ \t]+(?P<name>\w+)", re.IGNORECASE)
+
+
+def _advise_multiple_programs(lines: list[str], i: int) -> str | None:
+    """Más de un PROGRAM en la respuesta: WinCaps III exige uno por archivo.
+
+    Un .pac con dos declaraciones falla al compilar con "Plural program names are
+    defined". La respuesta llega como un solo bloque de texto con cabeceras
+    ``' ARCHIVO: x.pac``, así que quien la copia entera a un único archivo choca
+    con eso — y con "Wrong name" en el RUN, porque el programa invocado no existe
+    como archivo propio.
+
+    Es un advisory y no una regla de linter a propósito: repartir el código en
+    archivos es una decisión del usuario en su proyecto, no una reescritura
+    mecánica que se pueda hacer por él. Se emite una sola vez, en la segunda
+    declaración.
+    """
+    match = _PROGRAM_DECL.match(lines[i])
+    if not match:
+        return None
+
+    previos = [
+        m.group("name")
+        for m in (_PROGRAM_DECL.match(line) for line in lines[:i])
+        if m
+    ]
+    if len(previos) != 1:  # solo en la segunda: no repetir el aviso
+        return None
+
+    return (
+        f"Línea {i + 1}: la respuesta define más de un PROGRAM "
+        f"({previos[0]}, {match.group('name')}). WinCaps III admite UNO por archivo: "
+        "cada bloque ' ARCHIVO: <nombre> debe guardarse como un archivo aparte del "
+        "proyecto. Pegarlos todos juntos falla con 'Plural program names are "
+        "defined' y 'Wrong name' en el RUN."
+    )
+
+
 _PAC_ADVISORY_RULES: list[_PacAdvisoryRule] = [
     _PacAdvisoryRule(
         name="step_move_before_io", check=_advise_step_move_before_io
+    ),
+    _PacAdvisoryRule(
+        name="multiple_programs_one_file", check=_advise_multiple_programs
     ),
 ]
 

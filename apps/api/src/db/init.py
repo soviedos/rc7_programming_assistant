@@ -217,6 +217,7 @@ def seed_default_settings() -> None:
     from src.services.settings.service import (
         fix_legacy_io_assignment_prompt,
         fix_legacy_move_prompt,
+        fix_missing_one_program_rule_prompt,
         seed_if_empty,
     )  # local import avoids circularity
 
@@ -227,3 +228,6 @@ def seed_default_settings() -> None:
         # Repair the movement block: it called MOVE P "lineal", claimed "@" meant
         # relative, and never covered per-axis motion (DRIVE/DRIVEA).
         fix_legacy_move_prompt(session)
+        # Add the one-PROGRAM-per-file rule: without it a multitasking answer
+        # pasted into a single file fails with "Plural program names are defined".
+        fix_missing_one_program_rule_prompt(session)
