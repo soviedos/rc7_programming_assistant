@@ -57,7 +57,7 @@ def reembed_all_missing() -> None:
             )
 
             texts = [c.text for c in chunks]
-            embeddings = embed_texts(texts)
+            embeddings = embed_texts(texts, titles=[c.section_title for c in chunks])
 
             if not embeddings or all(len(e) == 0 for e in embeddings):
                 log(

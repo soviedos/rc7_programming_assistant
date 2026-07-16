@@ -118,7 +118,7 @@ def test_process_next_pending_manual_indexes_chunks(
     # ningún embedding se marca failed.
     monkeypatch.setattr(
         "src.jobs.ingestion.embed_texts",
-        lambda texts: [[0.1] * EMBEDDING_DIM for _ in texts],
+        lambda texts, titles=None: [[0.1] * EMBEDDING_DIM for _ in texts],
     )
 
     processed = process_next_pending_manual(
@@ -510,3 +510,57 @@ def test_apply_safe_chunk_autofixes_regenerate_skipped_above_threshold(
     assert reviewer.calls == 0
     assert applied_count == 0
     assert fixed_chunks[0].text == original
+
+
+def test_apply_safe_chunk_autofixes_preserva_section_title(monkeypatch) -> None:
+    """Los autofixes crean TextChunk nuevos: deben arrastrar la sección.
+
+    Sin esto, cada merge/split/regenerate borraba silenciosamente la anotación y
+    el chunk quedaba sin sección en la BD y sin contexto en su embedding.
+    """
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_autofix_enabled", True
+    )
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_merge_boundary_max", 0.6
+    )
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_split_min_chars", 10
+    )
+    monkeypatch.setattr(
+        "src.jobs.ingestion.settings.semantic_review_split_max_coherence", 0.65
+    )
+
+    seccion = "1.1 Standard Components"
+    chunks = [
+        TextChunk(page_number=1, text="Linea 1:", section_title=seccion),
+        TextChunk(page_number=1, text="continuacion", section_title=seccion),
+        TextChunk(
+            page_number=2,
+            text="Primera parte del texto.\n\nSegunda parte del texto.",
+            section_title=seccion,
+        ),
+    ]
+    reviews = [
+        ChunkReviewResult(
+            chunk_index=0,
+            page_number=1,
+            review_status="reviewed",
+            action="merge_with_next",
+            boundary_quality_score=0.4,
+        ),
+        ChunkReviewResult(
+            chunk_index=2,
+            page_number=2,
+            review_status="reviewed",
+            action="split",
+            coherence_score=0.3,
+        ),
+    ]
+
+    fixed_chunks, applied_count = apply_safe_chunk_autofixes(chunks, reviews)
+
+    assert applied_count == 2
+    assert all(c.section_title == seccion for c in fixed_chunks), [
+        (c.section_title, c.text[:20]) for c in fixed_chunks
+    ]

@@ -18,25 +18,36 @@ _MANUAL_COLUMNS: dict[str, str] = {
 }
 
 
-def ensure_manual_columns(engine: Engine) -> None:
+# Columnas añadidas a ``manual_chunks`` tras su primera versión.
+_MANUAL_CHUNK_COLUMNS: dict[str, str] = {
+    "section_title": "VARCHAR(500)",
+}
+
+
+def _add_missing_columns(engine: Engine, table: str, columns: dict[str, str]) -> None:
     inspector = inspect(engine)
-    if "manuals" not in set(inspector.get_table_names()):
+    if table not in set(inspector.get_table_names()):
         return
 
-    existing = {column["name"] for column in inspector.get_columns("manuals")}
+    existing = {column["name"] for column in inspector.get_columns(table)}
 
     with engine.begin() as connection:
-        for column_name, sql_type in _MANUAL_COLUMNS.items():
+        for column_name, sql_type in columns.items():
             if column_name in existing:
                 continue
 
             if engine.dialect.name == "postgresql":
                 connection.execute(
                     text(
-                        f"ALTER TABLE manuals ADD COLUMN IF NOT EXISTS {column_name} {sql_type}"
+                        f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column_name} {sql_type}"
                     )
                 )
             else:
                 connection.execute(
-                    text(f"ALTER TABLE manuals ADD COLUMN {column_name} {sql_type}")
+                    text(f"ALTER TABLE {table} ADD COLUMN {column_name} {sql_type}")
                 )
+
+
+def ensure_manual_columns(engine: Engine) -> None:
+    _add_missing_columns(engine, "manuals", _MANUAL_COLUMNS)
+    _add_missing_columns(engine, "manual_chunks", _MANUAL_CHUNK_COLUMNS)

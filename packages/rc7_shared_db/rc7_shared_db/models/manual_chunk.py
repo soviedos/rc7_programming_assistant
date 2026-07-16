@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from rc7_shared_db.base import Base
@@ -20,6 +20,9 @@ class ManualChunk(Base):
     )
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Sección del manual (outline del PDF). Nullable: los PDFs sin outline y los
+    # chunks anteriores a esta columna no la tienen.
+    section_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[list[float] | None] = mapped_column(
         EmbeddingVector(), nullable=True

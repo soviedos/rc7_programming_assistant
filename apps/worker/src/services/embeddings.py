@@ -30,8 +30,15 @@ def _get_client() -> genai.Client:
     )
 
 
-def embed_texts(texts: Sequence[str]) -> list[list[float]]:
+def embed_texts(
+    texts: Sequence[str],
+    titles: Sequence[str | None] | None = None,
+) -> list[list[float]]:
     """Return one embedding vector per input text (dimension _OUTPUT_DIMENSIONALITY).
+
+    ``titles`` is the section each text belongs to; se envía a Gemini como el
+    campo ``title`` del prefijo, que es contexto real para el embedding en lugar
+    del "none" que se mandaba antes. Si falta, se cae a "none".
 
     Processes in batches and retries on transient errors.
     Returns an empty list for each text that ultimately fails.
@@ -44,16 +51,22 @@ def embed_texts(texts: Sequence[str]) -> list[list[float]]:
 
     client = _get_client()
     results: list[list[float]] = []
+    section_titles = list(titles or [None] * len(texts))
 
     for batch_start in range(0, len(texts), _BATCH_SIZE):
         batch = list(texts[batch_start : batch_start + _BATCH_SIZE])
+        batch_titles = section_titles[batch_start : batch_start + _BATCH_SIZE]
         for attempt in range(1, _RETRY_LIMIT + 1):
             try:
                 contents = [
                     types.Content(
-                        parts=[types.Part.from_text(text=f"title: none | text: {t}")]
+                        parts=[
+                            types.Part.from_text(
+                                text=f"title: {title or 'none'} | text: {t}"
+                            )
+                        ]
                     )
-                    for t in batch
+                    for t, title in zip(batch, batch_titles)
                 ]
                 response = client.models.embed_content(
                     model=_EMBEDDING_MODEL,

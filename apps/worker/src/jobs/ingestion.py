@@ -13,7 +13,7 @@ from src.chunking.text import TextChunk, build_text_chunks
 from src.core.config import settings
 from src.db.models import Manual, ManualChunk, ManualChunkReview, ManualReviewSummary
 from src.db.session import SessionLocal, initialize_database
-from src.parsers.pdf import extract_pdf_text_by_page
+from src.parsers.pdf import extract_page_sections, extract_pdf_text_by_page
 from src.services.embeddings import embed_texts
 from src.services.semantic_review import (
     ChunkReviewResult,
@@ -129,7 +129,11 @@ def apply_safe_chunk_autofixes(
                 f"{chunk.text.rstrip()}\n\n{chunks[index + 1].text.lstrip()}".strip()
             )
             fixed_chunks.append(
-                TextChunk(page_number=chunk.page_number, text=merged_text)
+                TextChunk(
+                    page_number=chunk.page_number,
+                    text=merged_text,
+                    section_title=chunk.section_title,
+                )
             )
             review.reason = _append_reason(
                 review.reason, "Auto-fix aplicado: merge_with_next."
@@ -148,9 +152,19 @@ def apply_safe_chunk_autofixes(
             split_pair = _split_text_for_autofix(chunk.text)
             if split_pair:
                 left, right = split_pair
-                fixed_chunks.append(TextChunk(page_number=chunk.page_number, text=left))
                 fixed_chunks.append(
-                    TextChunk(page_number=chunk.page_number, text=right)
+                    TextChunk(
+                        page_number=chunk.page_number,
+                        text=left,
+                        section_title=chunk.section_title,
+                    )
+                )
+                fixed_chunks.append(
+                    TextChunk(
+                        page_number=chunk.page_number,
+                        text=right,
+                        section_title=chunk.section_title,
+                    )
                 )
                 review.reason = _append_reason(
                     review.reason, "Auto-fix aplicado: split."
@@ -178,7 +192,11 @@ def apply_safe_chunk_autofixes(
                 and rewritten.strip() != chunk.text.strip()
             ):
                 fixed_chunks.append(
-                    TextChunk(page_number=chunk.page_number, text=rewritten.strip())
+                    TextChunk(
+                        page_number=chunk.page_number,
+                        text=rewritten.strip(),
+                        section_title=chunk.section_title,
+                    )
                 )
                 review.reason = _append_reason(
                     review.reason, "Auto-fix aplicado: regenerate."
@@ -237,7 +255,9 @@ def index_manual_chunks(
     # Generate embeddings for all chunks in one batched call
     chunk_texts = [chunk.text for chunk in chunks]
     try:
-        embeddings = embed_texts(chunk_texts)
+        embeddings = embed_texts(
+            chunk_texts, titles=[chunk.section_title for chunk in chunks]
+        )
     except Exception as exc:
         log("worker", f"No se generaron embeddings para manual #{manual.id}: {exc}")
         embeddings = [None] * len(chunks)  # type: ignore[list-item]
@@ -265,6 +285,7 @@ def index_manual_chunks(
                 manual_id=manual.id,
                 chunk_index=chunk_index,
                 page_number=chunk.page_number,
+                section_title=chunk.section_title,
                 text=chunk.text,
                 embedding=embedding if embedding else None,
             )
@@ -442,7 +463,9 @@ def process_next_pending_manual(
             with manual_processing_timeout(timeout_seconds):
                 content = storage.download_manual(manual.storage_key)
                 page_texts = extract_pdf_text_by_page(content)
-                chunks = build_text_chunks(page_texts)
+                chunks = build_text_chunks(
+                    page_texts, page_sections=extract_page_sections(content)
+                )
 
                 if not chunks:
                     raise ValueError("No se pudo extraer texto util del PDF.")
