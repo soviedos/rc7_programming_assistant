@@ -514,12 +514,83 @@ def _build_user_message(payload: ChatRequest, context_chunks: list[str]) -> str:
     )
 
 
+def _repair_truncated_json(text: str) -> str | None:
+    """Cierra un objeto JSON que quedó cortado, o ``None`` si no hay nada que cerrar.
+
+    Gemini a veces termina el stream a mitad del JSON, sin agotar max_tokens: el
+    payload queda sin sus llaves de cierre y ``json.loads`` lo rechaza entero. La
+    respuesta ya generada (summary y pac_code completos) se perdía por una llave.
+
+    Recorre el texto siguiendo el estado real del parser — dentro/fuera de string,
+    escapes — y cierra lo que quedó abierto. Un valor a medias se descarta hasta la
+    última coma para no inventar contenido: mejor perder el último campo que
+    entregar uno truncado como si estuviera completo.
+    """
+    stack: list[str] = []
+    in_string = False
+    escaped = False
+    last_safe = -1  # fin del último par clave/valor cerrado en el nivel superior
+
+    for i, ch in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+        elif ch == "," and len(stack) == 1:
+            last_safe = i
+
+    if not stack:
+        return None  # nada abierto: no es un truncamiento
+
+    body = text
+    if in_string:
+        # Cortado a mitad de un valor: retroceder al último campo completo en vez
+        # de cerrar la comilla e inventar un valor a medias.
+        if last_safe == -1:
+            return None
+        body = text[:last_safe]
+        stack = []
+        in_str2 = False
+        esc2 = False
+        for ch in body:
+            if in_str2:
+                if esc2:
+                    esc2 = False
+                elif ch == "\\":
+                    esc2 = True
+                elif ch == '"':
+                    in_str2 = False
+                continue
+            if ch == '"':
+                in_str2 = True
+            elif ch in "{[":
+                stack.append("}" if ch == "{" else "]")
+            elif ch in "}]":
+                if stack:
+                    stack.pop()
+
+    return body.rstrip().rstrip(",") + "".join(reversed(stack))
+
+
 def _parse_gemini_json(raw: str) -> dict:
     """Extract the JSON object from the raw Gemini response text."""
     # Strip possible markdown fences
     cleaned = re.sub(r"^```(?:json)?\s*", "", raw.strip(), flags=re.MULTILINE)
     cleaned = re.sub(r"\s*```$", "", cleaned.strip(), flags=re.MULTILINE)
 
+    data = None
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError:
@@ -529,11 +600,28 @@ def _parse_gemini_json(raw: str) -> dict:
             try:
                 data = json.loads(match.group(0))
             except json.JSONDecodeError:
-                data = {"summary": cleaned, "pac_code": "", "references": []}
-        else:
-            # No JSON found at all — treat entire response as summary so the
-            # safety net below can still extract pac_code from a code block.
-            data = {"summary": cleaned, "pac_code": "", "references": []}
+                data = None
+
+        if data is None:
+            # Truncado: el stream de Gemini se cortó sin cerrar el JSON. Sin esto
+            # la respuesta entera se perdía por una llave que falta.
+            repaired = _repair_truncated_json(cleaned)
+            if repaired:
+                try:
+                    data = json.loads(repaired)
+                    _logger.info(
+                        "JSON de Gemini truncado; reparado (%d chars recuperados)",
+                        len(repaired),
+                    )
+                except json.JSONDecodeError:
+                    data = None
+
+    if data is None:
+        # Sin JSON aprovechable — el texto entero pasa como summary para que la
+        # red de seguridad de abajo aún pueda extraer pac_code de un bloque ```.
+        data = {"summary": cleaned, "pac_code": "", "references": []}
+    if not isinstance(data, dict):
+        data = {"summary": str(data), "pac_code": "", "references": []}
 
     # Safety net: if pac_code is empty but summary contains a PAC code block,
     # extract the code and strip it from the summary so the UI receives them
