@@ -216,6 +216,7 @@ def seed_default_settings() -> None:
     """Insert default system settings for any keys not yet present."""
     from src.services.settings.service import (
         fix_legacy_io_assignment_prompt,
+        fix_legacy_move_prompt,
         seed_if_empty,
     )  # local import avoids circularity
 
@@ -223,3 +224,6 @@ def seed_default_settings() -> None:
         seed_if_empty(session)
         # Repair the legacy invalid IO-assignment line in already-saved prompts.
         fix_legacy_io_assignment_prompt(session)
+        # Repair the movement block: it called MOVE P "lineal", claimed "@" meant
+        # relative, and never covered per-axis motion (DRIVE/DRIVEA).
+        fix_legacy_move_prompt(session)

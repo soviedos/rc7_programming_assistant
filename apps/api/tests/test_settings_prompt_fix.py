@@ -8,7 +8,9 @@ from src.db.models.settings import SystemSetting
 from src.services.settings.service import (
     _DEFAULT_PAC_RULES,
     _LEGACY_IO_ASSIGN,
+    _LEGACY_MOVE_BLOCK,
     fix_legacy_io_assignment_prompt,
+    fix_legacy_move_prompt,
 )
 
 
@@ -70,3 +72,79 @@ def test_fix_is_idempotent(db_session: Session) -> None:
 
 def test_fix_is_safe_when_row_missing(db_session: Session) -> None:
     assert fix_legacy_io_assignment_prompt(db_session) is False
+
+
+# ── Bloque de movimiento: MOVE/@ falsos y DRIVE/DRIVEA ausentes ─────
+
+
+def test_default_prompt_no_longer_mislabels_move_p_as_linear() -> None:
+    """El prompt llamaba "lineal" a MOVE P y decía que "@" era relativo.
+
+    MOVE P es PTP (lo dice el propio prompt una línea antes); lineal es MOVE L.
+    Y @P/@0/@E son pass/end/encoder-check motion: ningún manual liga "@" con
+    movimiento relativo, que se expresa con aritmética sobre la posición actual.
+    """
+    assert "Movimiento lineal relativo: MOVE P" not in _DEFAULT_PAC_RULES
+    assert "@ indica relativo al punto actual" not in _DEFAULT_PAC_RULES
+    # Ahora enseña lo correcto:
+    assert "Lineal: MOVE L," in _DEFAULT_PAC_RULES
+    assert "@P = pass motion" in _DEFAULT_PAC_RULES
+    assert "MOVE P, @P P0+(0, 0, -70)H" in _DEFAULT_PAC_RULES
+
+
+def test_default_prompt_teaches_per_axis_motion() -> None:
+    """La ausencia de DRIVE/DRIVEA es lo que llevó al modelo a inventar MOVE J."""
+    assert "DRIVEA (1, 45), (2, -30)" in _DEFAULT_PAC_RULES
+    assert "DRIVE (1, 45)" in _DEFAULT_PAC_RULES
+    # y avisa de las dos invenciones que WinCaps III rechazó:
+    assert 'NO existe "MOVE J"' in _DEFAULT_PAC_RULES
+    assert "NO existe el constructor J(...)" in _DEFAULT_PAC_RULES
+    # los métodos válidos, explícitos
+    assert "P = PTP (articular)   L = lineal   C = circular   S = curva libre" in (
+        _DEFAULT_PAC_RULES
+    )
+
+
+def test_move_fix_upgrades_saved_prompt_and_preserves_customization(
+    db_session: Session,
+) -> None:
+    custom = (
+        "REGLAS PERSONALIZADAS DEL USUARIO.\n"
+        + _LEGACY_MOVE_BLOCK
+        + "    * JUMP para trayectorias articulares largas: JUMP P[pPrePick]\n"
+        + "- VARIABLES:\n"
+        + "- FIN PERSONALIZADO."
+    )
+    _seed_prompt(db_session, custom)
+
+    assert fix_legacy_move_prompt(db_session) is True
+
+    row = db_session.query(SystemSetting).filter_by(key="system_prompt_pac").one()
+    assert "Movimiento lineal relativo: MOVE P" not in row.value
+    assert "@ indica relativo al punto actual" not in row.value
+    assert "DRIVEA (1, 45), (2, -30)" in row.value
+    # El bloque articular se inserta ANTES de - VARIABLES:, no al final.
+    assert row.value.index("DRIVEA") < row.value.index("- VARIABLES:")
+    # La personalización del usuario sobrevive (reemplazo de subcadena).
+    assert row.value.startswith("REGLAS PERSONALIZADAS DEL USUARIO.")
+    assert row.value.endswith("- FIN PERSONALIZADO.")
+    # Las líneas correctas del bloque original se conservan.
+    assert "JUMP P[pPrePick]" in row.value
+
+
+def test_move_fix_is_idempotent(db_session: Session) -> None:
+    _seed_prompt(db_session, _LEGACY_MOVE_BLOCK + "- VARIABLES:\n")
+
+    assert fix_legacy_move_prompt(db_session) is True
+    row = db_session.query(SystemSetting).filter_by(key="system_prompt_pac").one()
+    primera = row.value
+
+    # Segunda pasada: ya está al día, no debe tocar nada ni duplicar el bloque.
+    assert fix_legacy_move_prompt(db_session) is False
+    db_session.refresh(row)
+    assert row.value == primera
+    assert row.value.count("DRIVEA (1, 45), (2, -30)") == 1
+
+
+def test_move_fix_is_noop_when_row_absent(db_session: Session) -> None:
+    assert fix_legacy_move_prompt(db_session) is False

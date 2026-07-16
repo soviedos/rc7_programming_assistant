@@ -35,12 +35,31 @@ REGLAS CRÍTICAS DE SINTAXIS (incumplirlas genera errores de compilación o comp
 - CONTROL DEL BRAZO: se obtiene con TAKEARM y se libera con GIVEARM (NO usar FREEARM).
 - MOTORES: MOTOR ON activa los motores; MOTOR OFF los apaga. Se usan según el contexto; \
 en programas modulares el control de motores puede estar en el programa principal o en rutinas de init.
-- MOVIMIENTO:
-    * Movimiento PTP (articular): MOVE P, P[pHome], S=50  (S= especifica % de velocidad interna)
-    * Movimiento lineal relativo: MOVE P, @P P[pPick]  (@ indica relativo al punto actual)
+- MOVIMIENTO A UN PUNTO (MOVE <método>, <destino>):
+    * El método de interpolación es la letra tras MOVE y SOLO puede ser:
+        P = PTP (articular)   L = lineal   C = circular   S = curva libre
+      NO existe "MOVE J": designar J da el error "Wrong interpolation method".
+    * PTP: MOVE P, P[pHome], S=50   (S= especifica % de velocidad interna)
+    * Lineal: MOVE L, P[pPick], S=20
+    * @P / @0 / @E NO significan "relativo": eligen cómo se transita el punto.
+      @P = pass motion (pasa de largo sin detenerse), @0 = end motion (se detiene
+      al alcanzar el valor de comando), @E = espera confirmación del encoder.
+      Ej.: MOVE L, @P P1  encadena sin parar; MOVE L, @0 P2 se detiene en P2.
+    * Movimiento RELATIVO: aritmética sobre la posición actual, no con @.
+      Ej.: MOVE P, @P P0+(0, 0, -70)H   (P0 es la posición actual)
     * JUMP para trayectorias articulares largas entre puntos alejados: JUMP P[pPrePick]
     * Los puntos se referencian como macros: P[pHome], P[pPick], P[pPlace], etc.
       (definidos en var_tab.h) o como P0, P1, P10, etc.
+- MOVIMIENTO POR ÁNGULO DE EJE (cuando se pide mover una articulación a N grados):
+    * ABSOLUTO — "mueve el eje 1 A 45 grados":   DRIVEA (1, 45)
+      Varios ejes a la vez:                      DRIVEA (1, 45), (2, -30)
+    * RELATIVO — "gira el eje 1 45 grados MÁS":  DRIVE (1, 45)
+      Elegir mal entre ambos COMPILA igual y mueve el robot a otro sitio: DRIVEA
+      va a un ángulo, DRIVE suma ese ángulo a la posición actual.
+    * Todos los ejes de una vez, con una variable tipo J:
+        J1 = (45, -30, 0, 0, 0, 0)   'también J[0] = (45, -30, 0, 0, 0, 0)
+        MOVE P, J1, S=50             'PTP hasta la pose articular
+      NO existe el constructor J(...): "J1 = J(45, ...)" da "Type J data op('(')".
 - VARIABLES:
     * Enteras:    I[iPartsId], I[iCount]  (macros de var_tab.h)
     * Reales:     F[fDelay], F[fSpeed]
@@ -290,5 +309,84 @@ def fix_legacy_io_assignment_prompt(db: Session) -> bool:
     if row is None or _LEGACY_IO_ASSIGN not in row.value:
         return False
     row.value = row.value.replace(_LEGACY_IO_ASSIGN, _FIXED_IO_ASSIGN)
+    db.commit()
+    return True
+
+
+# ── system_prompt_pac: movimiento (bloque legacy) ──────────────────
+#
+# El bloque de movimiento del prompt afirmaba dos cosas falsas en una línea:
+# llamaba "lineal" a MOVE P (que es PTP, como decía la línea anterior) y decía
+# que "@ indica relativo al punto actual" — @P/@0/@E son pass/end/encoder-check
+# motion, y el relativo se expresa con aritmética (P0+(0,0,-70)). Además no
+# mencionaba el movimiento por ángulo de eje, así que el modelo inventaba
+# "MOVE J" y "J(...)" cuando se le pedía mover una articulación a N grados.
+
+_LEGACY_MOVE_BLOCK = (
+    "- MOVIMIENTO:\n"
+    "    * Movimiento PTP (articular): MOVE P, P[pHome], S=50  "
+    "(S= especifica % de velocidad interna)\n"
+    "    * Movimiento lineal relativo: MOVE P, @P P[pPick]  "
+    "(@ indica relativo al punto actual)\n"
+)
+
+# Reemplaza SOLO la cabecera y las dos primeras viñetas del bloque: las líneas
+# siguientes (JUMP, macros de punto) eran correctas y se conservan tal cual.
+_FIXED_MOVE_BLOCK = (
+    "- MOVIMIENTO A UN PUNTO (MOVE <método>, <destino>):\n"
+    "    * El método de interpolación es la letra tras MOVE y SOLO puede ser:\n"
+    "        P = PTP (articular)   L = lineal   C = circular   S = curva libre\n"
+    '      NO existe "MOVE J": designar J da el error "Wrong interpolation method".\n'
+    "    * PTP: MOVE P, P[pHome], S=50   (S= especifica % de velocidad interna)\n"
+    "    * Lineal: MOVE L, P[pPick], S=20\n"
+    '    * @P / @0 / @E NO significan "relativo": eligen cómo se transita el punto.\n'
+    "      @P = pass motion (pasa de largo sin detenerse), @0 = end motion (se detiene\n"
+    "      al alcanzar el valor de comando), @E = espera confirmación del encoder.\n"
+    "      Ej.: MOVE L, @P P1  encadena sin parar; MOVE L, @0 P2 se detiene en P2.\n"
+    "    * Movimiento RELATIVO: aritmética sobre la posición actual, no con @.\n"
+    "      Ej.: MOVE P, @P P0+(0, 0, -70)H   (P0 es la posición actual)\n"
+)
+
+# Se inserta antes de "- VARIABLES:", que cierra el bloque de movimiento.
+_VARIABLES_ANCHOR = "- VARIABLES:"
+_JOINT_MOVE_BLOCK = (
+    "- MOVIMIENTO POR ÁNGULO DE EJE (cuando se pide mover una articulación a N grados):\n"
+    '    * ABSOLUTO — "mueve el eje 1 A 45 grados":   DRIVEA (1, 45)\n'
+    "      Varios ejes a la vez:                      DRIVEA (1, 45), (2, -30)\n"
+    '    * RELATIVO — "gira el eje 1 45 grados MÁS":  DRIVE (1, 45)\n'
+    "      Elegir mal entre ambos COMPILA igual y mueve el robot a otro sitio: DRIVEA\n"
+    "      va a un ángulo, DRIVE suma ese ángulo a la posición actual.\n"
+    "    * Todos los ejes de una vez, con una variable tipo J:\n"
+    "        J1 = (45, -30, 0, 0, 0, 0)   'también J[0] = (45, -30, 0, 0, 0, 0)\n"
+    "        MOVE P, J1, S=50             'PTP hasta la pose articular\n"
+    '      NO existe el constructor J(...): "J1 = J(45, ...)" da "Type J data op(\'(\')".\n'
+)
+
+
+def fix_legacy_move_prompt(db: Session) -> bool:
+    """Corrige el bloque de movimiento en un system_prompt_pac ya guardado.
+
+    Dos reemplazos de subcadena, ambos idempotentes y aplicables por separado:
+    corregir las afirmaciones falsas sobre MOVE/@, e insertar el bloque de
+    movimiento por ángulo de eje. Preserva cualquier otra personalización y es
+    no-op si la fila no existe o ya está al día.
+
+    Devuelve ``True`` solo si se actualizó algo.
+    """
+    row = get_setting(db, "system_prompt_pac")
+    if row is None:
+        return False
+
+    value = row.value
+    if _LEGACY_MOVE_BLOCK in value:
+        value = value.replace(_LEGACY_MOVE_BLOCK, _FIXED_MOVE_BLOCK)
+    if _JOINT_MOVE_BLOCK not in value and _VARIABLES_ANCHOR in value:
+        value = value.replace(
+            _VARIABLES_ANCHOR, _JOINT_MOVE_BLOCK + _VARIABLES_ANCHOR, 1
+        )
+
+    if value == row.value:
+        return False
+    row.value = value
     db.commit()
     return True

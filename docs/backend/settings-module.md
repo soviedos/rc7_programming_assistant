@@ -60,8 +60,16 @@ reglas sintácticas del PAC real tal como aparece en los programas de WinCaps II
 - Estructura del programa: `PROGRAM`, cuerpo terminado en `END`, y subrutinas
   definidas **después** del `END` con `*Nombre:` … `RETURN`
 - Control del brazo: `TAKEARM` / `GIVEARM` (nunca `FREEARM`) y `MOTOR ON/OFF`
-- Movimiento: `MOVE P, P[pHome], S=50`, movimiento relativo con `@`, y `JUMP` para
-  trayectorias articulares largas
+- Movimiento a un punto: el método de interpolación es la letra tras `MOVE` y solo
+  puede ser `P` (PTP), `L` (lineal), `C` (circular) o `S` (curva libre) — `MOVE J`
+  no existe. `@P`/`@0`/`@E` eligen cómo se transita el punto (pass / end /
+  encoder-check), **no** significan "relativo": el relativo es aritmética sobre la
+  posición actual (`P0+(0,0,-70)`)
+- Movimiento por ángulo de eje: `DRIVEA (1, 45)` para absoluto ("mueve el eje 1 **a**
+  45°") y `DRIVE (1, 45)` para relativo ("gira 45° **más**"). Elegir mal compila
+  igual y mueve el robot a otro sitio. Pose articular completa: `J1 = (45, -30, …)`
+  + `MOVE P, J1`; el constructor `J(...)` no existe
+- `JUMP` para trayectorias articulares largas
 - Variables **por macros de `var_tab.h`** (`I[]`, `F[]`, `C[]`); el prompt indica
   explícitamente **no** declarar locales con `DIM` salvo casos especiales
 - E/S digitales: `SET IO[...]` / `RESET IO[...]` (nunca `IO[...] = ON/OFF`, que solo
