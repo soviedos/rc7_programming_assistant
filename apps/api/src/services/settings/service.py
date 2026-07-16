@@ -161,6 +161,11 @@ DEFAULT_SETTINGS: dict[str, tuple[str, str]] = {
         "0.7",
         "Temperatura de generación de Gemini (0.0 – 1.0)",
     ),
+    "hyde_temperature": (
+        "0.0",
+        "Temperatura de la fase HyDE (0.0 – 1.0). Su salida solo alimenta la "
+        "búsqueda, no se muestra: subirla vuelve la recuperación inestable",
+    ),
     "gemini_max_tokens": (
         "8192",
         "Límite de tokens de salida para Gemini",

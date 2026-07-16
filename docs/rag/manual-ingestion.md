@@ -96,6 +96,7 @@ desde la consola de administración (sin reiniciar el stack):
 | Parámetro (clave en settings) | Default | Efecto |
 |---|---|---|
 | `rag_top_k_chunks` | `6` | Número de chunks recuperados por consulta en la búsqueda coseno |
+| `hyde_temperature` | `0.0` | Temperatura de la fase 1 (HyDE). Su salida **solo** alimenta el embedding de búsqueda, no se muestra: subirla vuelve la recuperación inestable — con `0.7` la misma consulta traía documentación distinta en cada ejecución |
 | `rag_context_budget_chars` | `12000` | Presupuesto total de caracteres de contexto enviado a Gemini en Fase 4 |
 
 Ver [docs/backend/settings-module.md](../backend/settings-module.md) para la tabla completa.

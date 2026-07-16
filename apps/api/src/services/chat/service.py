@@ -37,6 +37,7 @@ _GEN_MODEL = settings.gemini_gen_model
 _TOP_K = int(DEFAULT_SETTINGS["rag_top_k_chunks"][0])
 _MAX_CTX_CHARS = int(DEFAULT_SETTINGS["rag_context_budget_chars"][0])
 _TEMPERATURE = float(DEFAULT_SETTINGS["gemini_temperature"][0])
+_HYDE_TEMPERATURE = float(DEFAULT_SETTINGS["hyde_temperature"][0])
 _MAX_TOKENS = int(DEFAULT_SETTINGS["gemini_max_tokens"][0])
 
 # Number of nearest neighbours pulled from pgvector before the category/hardware
@@ -648,6 +649,7 @@ class _ChatParams:
     top_k: int
     max_ctx: int
     temperature: float
+    hyde_temperature: float
     max_tokens: int
     timeout_seconds: int
     candidate_pool: int
@@ -661,6 +663,9 @@ def _load_chat_params(db: Session) -> _ChatParams:
         ),
         temperature=float(
             get_setting_value(db, "gemini_temperature", str(_TEMPERATURE))
+        ),
+        hyde_temperature=float(
+            get_setting_value(db, "hyde_temperature", str(_HYDE_TEMPERATURE))
         ),
         max_tokens=int(get_setting_value(db, "gemini_max_tokens", str(_MAX_TOKENS))),
         timeout_seconds=int(
@@ -714,6 +719,7 @@ def _run_rag_phases(
     max_ctx: int,
     temperature: float,
     max_tokens: int,
+    hyde_temperature: float = _HYDE_TEMPERATURE,
     timeout_seconds: int | None = None,
     candidate_pool: int = _VECTOR_CANDIDATE_POOL,
 ) -> tuple[dict[str, tuple[Manual, int]], str, str]:
@@ -732,10 +738,14 @@ def _run_rag_phases(
             f"CÓDIGO PAC ACTUAL EN EL CANVAS:\n```pac\n{payload.current_code}\n```\n\n"
             f"CONSULTA DEL USUARIO:\n{payload.prompt}"
         )
+    # Temperatura propia: la salida de esta fase NO se muestra, solo alimenta el
+    # embedding de búsqueda. Con la de generación (0.7) cada ejecución producía una
+    # respuesta hipotética distinta y recuperaba chunks distintos para la misma
+    # pregunta — medido: 1 de 5 traía la sección correcta, frente a 4 de 4 con 0.0.
     initial_answer = _call_gemini(
         phase1_message,
         system_instruction=_PHASE1_SYSTEM,
-        temperature=temperature,
+        temperature=hyde_temperature,
         max_output_tokens=max_tokens,
         timeout_seconds=timeout_seconds,
     )
@@ -797,6 +807,7 @@ def generate_rag_response(db: Session, payload: ChatRequest) -> ChatResponse:
         max_ctx=params.max_ctx,
         temperature=params.temperature,
         max_tokens=params.max_tokens,
+        hyde_temperature=params.hyde_temperature,
         timeout_seconds=params.timeout_seconds,
         candidate_pool=params.candidate_pool,
     )
@@ -844,6 +855,7 @@ def stream_rag_response(
         max_ctx=params.max_ctx,
         temperature=params.temperature,
         max_tokens=params.max_tokens,
+        hyde_temperature=params.hyde_temperature,
         timeout_seconds=params.timeout_seconds,
         candidate_pool=params.candidate_pool,
     )
