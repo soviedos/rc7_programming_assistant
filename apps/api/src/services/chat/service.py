@@ -182,6 +182,27 @@ _PAC_LINT_RULES: list[_PacLintRule] = [
         ),
         replacement=r"\g<indent>RESET IO[\g<idx>]\g<comment>",
     ),
+    # MOVE J, …  →  MOVE P, …
+    # "J" no es un método de interpolación: los válidos son P (PTP), L (lineal),
+    # C (circular) y S (curva libre). Para un movimiento articular el correcto es
+    # PTP, y el manual lo documenta como `MOVE P, J1`. WinCaps rechaza MOVE J con
+    # "Wrong interpolation method designated. Kw(J)".
+    _PacLintRule(
+        name="move_invalid_interpolation_j",
+        pattern=re.compile(r"^(?P<indent>[ \t]*)MOVE[ \t]+J[ \t]*,(?P<rest>.*)$"),
+        replacement=r"\g<indent>MOVE P,\g<rest>",
+    ),
+    # J[x] = J(…)  →  J[x] = (…)      ·      J1 = J(…)  →  J1 = (…)
+    # No existe constructor J(): el manual asigna con `J[0] = (10,20,30,40,50,60)`.
+    # WinCaps rechaza la forma con constructor con "Type J data op('(')".
+    _PacLintRule(
+        name="joint_bogus_constructor",
+        pattern=re.compile(
+            r"^(?P<indent>[ \t]*)(?P<lhs>J(?:\[[^\]]+\]|[0-9]+)[ \t]*=[ \t]*)"
+            r"J\((?P<args>.*)$"
+        ),
+        replacement=r"\g<indent>\g<lhs>(\g<args>",
+    ),
 ]
 
 
