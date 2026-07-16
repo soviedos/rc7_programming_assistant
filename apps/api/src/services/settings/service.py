@@ -203,18 +203,17 @@ DEFAULT_SETTINGS: dict[str, tuple[str, str]] = {
         "Tiempo máximo de espera para llamadas a Gemini (segundos)",
     ),
     "rag_top_k_chunks": (
-        "12",
-        "Número de fragmentos RAG recuperados por consulta. Medido sobre consultas "
-        "reales: con 6 llegaban 2-4 fragmentos útiles y el resto eran portadas y "
-        "prefacios; con 12 llegan 5-7. Subirlo a 18 no aportó más y desborda el "
-        "presupuesto de contexto",
+        "18",
+        "Fragmentos RAG enviados como contexto. Medido (fragmentos con código PAC "
+        "utilizable): 6→2-4, 12→7-9, 18→9-15. Con 18 el contexto es ~6k tokens: "
+        "0,6% de la ventana de Gemini, sin cambio de latencia",
     ),
     "rag_context_budget_chars": (
-        "16000",
+        "24000",
         "Presupuesto de caracteres para el contexto RAG. Si se agota, los "
         "fragmentos restantes se descartan EN SILENCIO: debe dar cabida a "
-        "rag_top_k_chunks (12 fragmentos llegan a ~15.500 chars en los casos "
-        "medidos) o recuperar de más no sirve de nada",
+        "rag_top_k_chunks (18 fragmentos llegan a ~23.000 chars en el peor caso "
+        "medido) o recuperar de más no sirve de nada",
     ),
     "rag_candidate_pool": (
         "50",
@@ -404,10 +403,12 @@ _ONE_PROGRAM_RULE = _DEFAULT_PAC_RULES[
 # SILENCIO lo que no cabe (break, no continue), así que 12 fragmentos con el
 # presupuesto viejo se habrían recortado a ~9 sin avisar.
 
-_RETRIEVAL_UPGRADES: dict[str, tuple[str, str]] = {
-    # clave: (valor por defecto anterior, valor nuevo)
-    "rag_top_k_chunks": ("6", "12"),
-    "rag_context_budget_chars": ("12000", "16000"),
+_RETRIEVAL_UPGRADES: dict[str, tuple[set[str], str]] = {
+    # clave: (defaults anteriores CONOCIDOS, valor nuevo). Se listan todos los que
+    # han existido: una instalación puede venir del original (6) o del intermedio
+    # (12), y ambas deben converger al actual.
+    "rag_top_k_chunks": ({"6", "12"}, "18"),
+    "rag_context_budget_chars": ({"12000", "16000"}, "24000"),
 }
 
 
@@ -421,9 +422,9 @@ def upgrade_retrieval_defaults(db: Session) -> list[str]:
     Devuelve las claves actualizadas.
     """
     cambiadas: list[str] = []
-    for key, (viejo, nuevo) in _RETRIEVAL_UPGRADES.items():
+    for key, (viejos, nuevo) in _RETRIEVAL_UPGRADES.items():
         row = get_setting(db, key)
-        if row is None or row.value.strip() != viejo:
+        if row is None or row.value.strip() not in viejos:
             continue
         row.value = nuevo
         cambiadas.append(key)

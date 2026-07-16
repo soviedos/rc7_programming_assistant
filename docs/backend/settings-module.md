@@ -28,8 +28,8 @@ Todos los endpoints requieren rol `admin`.
 | `gemini_temperature` | `float` | `0.7` | Temperatura de generación Gemini (0.0–1.0) | Controla la aleatoriedad de las respuestas: 0.0 = determinista, 1.0 = más creativo |
 | `gemini_max_tokens` | `int` | `8192` | Límite de tokens de salida en Gemini (Phase 4 fuerza `response_mime_type=application/json` para emitir JSON puro) | Respuestas truncadas si el modelo alcanza el límite; con Gemini 3.5 Flash se recomienda ≥ 8192 para código PAC completo |
 | `gemini_timeout_seconds` | `int` | `300` | Timeout (segundos) de cada llamada a Gemini. **Ahora se lee** y se propaga al cliente en las 4 fases (fallback al env `GEMINI_TIMEOUT_SECONDS`). | Requests más largos fallan con timeout |
-| `rag_top_k_chunks` | `int` | `12` | Chunks finales (tras re-rank) enviados como contexto | Medido sobre consultas reales: con 6 llegaban 2-4 fragmentos útiles y el resto eran portadas y prefacios; con 12 llegan 5-7. Con 18 no llegó ninguno más y desborda el presupuesto |
-| `rag_context_budget_chars` | `int` | `16000` | Presupuesto de caracteres de contexto enviado a Gemini | Limita el contexto RAG en la Fase 4. **Debe dar cabida a `rag_top_k_chunks`**: al agotarse, los fragmentos restantes se descartan en silencio (`break`), así que subir top-k sin subir esto no sirve de nada |
+| `rag_top_k_chunks` | `int` | `18` | Chunks finales (tras re-rank) enviados como contexto | Medido sobre consultas reales, contando fragmentos con código PAC utilizable: con 6 llegaban 2-4 y el resto eran portadas y prefacios; con 12 llegan 7-9; con 18, 9-15. Con 18 el contexto ronda los 6k tokens — 0,6 % de la ventana de Gemini — y la latencia no cambia de forma medible |
+| `rag_context_budget_chars` | `int` | `24000` | Presupuesto de caracteres de contexto enviado a Gemini | Limita el contexto RAG en la Fase 4. **Debe dar cabida a `rag_top_k_chunks`**: al agotarse, los fragmentos restantes se descartan en silencio (`break`), así que subir top-k sin subir esto no sirve de nada. 18 fragmentos llegan a ~23.000 chars en el peor caso medido |
 | `rag_candidate_pool` | `int` | `50` | Vecinos recuperados de pgvector (`<=>`/HNSW) antes del re-rank por hardware/categoría. También fija `hnsw.ef_search`. | Pool mayor = mejor recall, algo más de cómputo |
 | `system_prompt_pac` | `str` | *(ver abajo)* | Reglas de sintaxis PAC incluidas en el system prompt de Gemini | Define el comportamiento y restricciones del asistente |
 | `history_max_entries` | `int` | `50` | Máximo de entradas de historial de chat por usuario | Al superarse, las entradas más antiguas se eliminan automáticamente |
@@ -100,3 +100,23 @@ siguientes peticiones de chat.
 Al iniciar el servidor, si la tabla `system_settings` está vacía o faltan claves, el sistema
 inserta automáticamente todos los parámetros con sus valores por defecto.
 Esto garantiza que el pipeline funcione sin requerir configuración manual inicial.
+
+`seed_if_empty` solo **inserta lo que falta**: nunca pisa un valor ya guardado. Por eso, cuando un
+default cambia, hace falta una migración dirigida. `seed_default_settings`
+([db/init.py](../../apps/api/src/db/init.py)) ejecuta cuatro después del seed:
+
+| Función | Qué corrige |
+|---|---|
+| `fix_legacy_io_assignment_prompt` | El prompt guardado enseñaba `IO[...] = ON`, que no compila |
+| `fix_legacy_move_prompt` | El bloque de movimiento llamaba `MOVE P` "lineal" y no cubría `DRIVE`/`DRIVEA` |
+| `fix_missing_one_program_rule_prompt` | Añade la regla de un `PROGRAM` por archivo |
+| `upgrade_retrieval_defaults` | Sube `rag_top_k_chunks` y `rag_context_budget_chars` |
+
+Todas comparten el mismo criterio: **solo tocan filas que siguen en un default anterior conocido**. Un
+valor puesto a propósito desde la consola admin sobrevive al despliegue. `upgrade_retrieval_defaults`
+lista *todos* los defaults que han existido (`{"6", "12"} → "18"`), no solo el original, porque una
+instalación puede venir de cualquier versión intermedia y todas deben converger.
+
+> **Cuidado al editar `DEFAULT_SETTINGS`:** `description` es `VARCHAR(255)`. Una descripción más larga
+> hace que `seed_if_empty` lance `DataError`, e `initialize_database` lo propaga desde el `lifespan`:
+> **la API no arranca**. Lo cubre `test_every_description_fits_the_column`.

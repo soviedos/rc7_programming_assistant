@@ -76,6 +76,10 @@ En el stack Docker el servicio `web` corre el build **standalone** de producció
 no monta el código fuente (ver [infra/docker/README.md](../../infra/docker/README.md)).
 
 ```bash
-docker compose exec web npm test      # Vitest (suite del frontend)
+docker compose run --rm web-test      # Vitest (suite del frontend)
 npm run dev                           # desarrollo local con hot-reload (fuera de Docker)
 ```
+
+El servicio `web-test` existe porque en `web` **no** se puede: el build standalone no instala las
+devDependencies, así que ahí `vitest` no existe. `web-test` construye el target `test` del mismo
+Dockerfile y vive en el perfil `test`, por lo que un `docker compose up` no lo levanta.
