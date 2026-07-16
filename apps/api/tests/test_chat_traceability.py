@@ -92,18 +92,31 @@ def test_every_cited_sid_in_pac_code_has_reference_with_source_id() -> None:
 
 
 def test_prepend_source_legend_builds_deterministic_block() -> None:
+    """La leyenda declara en qué se BASA el código, no qué se recuperó.
+
+    El código solo cita S2, así que S1 y S3 no aparecen aunque estén en el
+    source_map: listarlos hacía que un programa sostenido por una página
+    anunciara tres fuentes. Ver test_chat_source_legend.py.
+    """
     code = "PROGRAM p\n    MOVE P, P1    ' fuente: S2\nEND"
     out = _prepend_source_legend(code, _make_source_map())
     lines = out.split("\n")
     assert lines[0] == "' ─── Fuentes (trazabilidad) ───"
+    assert lines[1] == "' S2 = Startup Guide, pág. 45"
+    assert lines[2] == "' ──────────────────────────────"
+    # Every legend line is a valid PAC comment (apostrophe) and the original
+    # code is preserved verbatim after the block.
+    assert all(line.startswith("'") for line in lines[:3])
+    assert out.endswith(code)
+
+
+def test_prepend_source_legend_lists_all_when_code_cites_nothing() -> None:
+    """Sin citas no se deja el programa sin ninguna procedencia."""
+    code = "PROGRAM p\n    MOVE P, P1\nEND"
+    lines = _prepend_source_legend(code, _make_source_map()).split("\n")
     assert lines[1] == "' S1 = Programmer Manual, pág. 12"
     assert lines[2] == "' S2 = Startup Guide, pág. 45"
     assert lines[3] == "' S3 = Programmer Manual, pág. 12"
-    assert lines[4] == "' ──────────────────────────────"
-    # Every legend line is a valid PAC comment (apostrophe) and the original
-    # code is preserved verbatim after the block.
-    assert all(line.startswith("'") for line in lines[:5])
-    assert out.endswith(code)
 
 
 def test_prepend_source_legend_noop_on_empty_code() -> None:

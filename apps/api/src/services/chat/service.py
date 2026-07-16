@@ -98,20 +98,34 @@ def _embed_query(text_input: str, timeout_seconds: int | None = None) -> list[fl
     return list(result.embeddings[0].values)
 
 
+_SOURCE_CITATION = re.compile(r"'\s*fuente:\s*(S\d+)", re.IGNORECASE)
+
+
+def _cited_source_ids(pac_code: str) -> set[str]:
+    """SIDs realmente citados como ``' fuente: SX`` en el código."""
+    return {sid.upper() for sid in _SOURCE_CITATION.findall(pac_code or "")}
+
+
 def _resolve_references(
     source_map: dict[str, tuple[Manual, int]],
+    pac_code: str | None = None,
 ) -> list[tuple[str, str, str]]:
-    """Return the full source legend for the response.
+    """Return the source legend for the response, as ``(source_id, title, page)``.
 
-    One entry **per SID present in ``source_map``**, ordered S1…Sn, as
-    ``(source_id, title, page)``. The legend therefore covers EVERY ``S<n>`` that
-    can appear as an inline ``' fuente: SX`` comment in the generated PAC code, so
-    no cited ID is ever left unresolved.
+    With ``pac_code``, only the SIDs the code actually cites: la leyenda declara
+    en qué se BASA el programa, no qué se consultó. El recuperador trae top-k
+    chunks y varios suelen ser ruido (índices, portadas, tutoriales del IDE);
+    listarlos todos hacía que un programa sostenido por una página anunciara seis
+    fuentes, y quien fuera a comprobarlas encontraba "Chapter 1 Overview".
 
-    The model's own ``references`` array is intentionally ignored: the saved
-    ``source_map`` is the single source of truth for ``SID → (manual, page)``.
-    This mapping is persisted with the message so a SID never has to be re-decoded
-    (and never invented) in a later turn.
+    Sin ``pac_code`` (o si el código no cita nada) devuelve el mapa completo, que
+    es el comportamiento antiguo: así un ``' fuente: SX`` siempre resuelve y un
+    programa sin citas no se queda sin ninguna procedencia.
+
+    El array ``references`` del propio modelo se ignora a propósito: el
+    ``source_map`` guardado es la única fuente de verdad para ``SID → (manual,
+    página)``, y se persiste con el mensaje para que un SID no se re-decodifique
+    (ni se invente) en un turno posterior.
     """
 
     def _order(sid: str) -> int:
@@ -120,25 +134,38 @@ def _resolve_references(
         except (ValueError, IndexError):
             return 0
 
+    sids = set(source_map)
+    if pac_code:
+        citados = _cited_source_ids(pac_code) & sids
+        if citados:
+            sids = citados
+
     return [
         (sid, source_map[sid][0].title, str(source_map[sid][1]))
-        for sid in sorted(source_map, key=_order)
+        for sid in sorted(sids, key=_order)
     ]
 
 
 def _prepend_source_legend(
     pac_code: str,
     source_map: dict[str, tuple[Manual, int]],
+    references: list[tuple[str, str, str]] | None = None,
 ) -> str:
     """Prepend a PAC-comment source legend to non-empty ``pac_code``.
 
     Built **deterministically from ``source_map``** (never asked to the model) so
     the generated ``.pac`` file is self-contained outside the app. Uses the
     apostrophe comment syntax — valid in WinCaps III — so it never affects
-    compilation. Only the SIDs present in ``source_map`` are included; if there
-    is no code or no source, the code is returned unchanged.
+    compilation. Si no hay código o no hay fuentes, devuelve el código igual.
+
+    ``references`` se pasa ya resuelto para que la leyenda del archivo y el campo
+    ``references`` de la respuesta no puedan discrepar. Calcularlo aquí de nuevo
+    sobre el código ya anotado tampoco funcionaría: las propias líneas de la
+    leyenda contienen "S1 =", que el filtro de citas volvería a contar.
     """
-    legend = _resolve_references(source_map)
+    legend = (
+        references if references is not None else _resolve_references(source_map, pac_code)
+    )
     if not pac_code or not legend:
         return pac_code
 
@@ -829,9 +856,11 @@ def _finalize_response(
     if lint_fixes:
         _logger.info("PAC linter aplicó %d corrección(es) determinista(s)", lint_fixes)
 
-    references = _resolve_references(source_map)
+    # Sobre el código YA linteado y ANTES de anteponer la leyenda: el linter puede
+    # reescribir líneas con su ' fuente: SX, y la leyenda misma contiene "S1 =".
+    references = _resolve_references(source_map, pac_code)
     # Make the .pac self-contained: prepend the deterministic source legend.
-    pac_code = _prepend_source_legend(pac_code, source_map)
+    pac_code = _prepend_source_legend(pac_code, source_map, references)
 
     advisories = _pac_advisories(pac_code)
     if advisories:

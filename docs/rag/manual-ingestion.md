@@ -238,8 +238,12 @@ o bloque PAC generado lleve un comentario de fuente (`' fuente: S2`, válido en 
 apóstrofo).
 
 El array `references` que devuelve el modelo se **ignora a propósito**:
-`_resolve_references` solo recibe el `source_map` y emite una entrada por cada SID
-que contenga, ordenadas S1…Sn. Así la leyenda cubre todos los `S<n>` que pueden
+`_resolve_references` construye la leyenda desde el `source_map` guardado. Emite solo
+los SIDs que el código **cita de verdad** (`' fuente: SX`), no todos los recuperados:
+la leyenda declara en qué se BASA el programa, no qué se consultó. El recuperador trae
+top-k chunks y parte suele ser ruido (prefacios, índices, tutoriales del IDE), así que
+listarlos todos hacía que un programa sostenido por una página anunciara seis fuentes.
+Si el código no cita ninguna, cae al mapa completo para no dejarlo sin procedencia. Así la leyenda cubre todos los `S<n>` que pueden
 aparecer citados en el código, ningún ID queda sin resolver y no hace falta
 descartar IDs alucinados: el `source_map` es la única fuente de verdad y se
 persiste con el mensaje, de modo que un SID nunca se re-decodifica en un turno
