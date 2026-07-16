@@ -98,11 +98,17 @@ def _embed_query(text_input: str, timeout_seconds: int | None = None) -> list[fl
     return list(result.embeddings[0].values)
 
 
-_SOURCE_CITATION = re.compile(r"'\s*fuente:\s*(S\d+)", re.IGNORECASE)
+# Deliberadamente permisivo: el prompt pide `' fuente: S2`, pero el modelo también
+# escribe `' comentario (fuente: S2)`. Anclarlo al apóstrofo dejaba fuera esa
+# variante, el filtro no encontraba citas y la leyenda caía al mapa completo. En
+# PAC todo lo que sigue a `'` es comentario, y "fuente:" no aparece en el código,
+# así que basta con exigir el SID detrás.
+_SOURCE_CITATION = re.compile(r"fuente:\s*(S\d+)", re.IGNORECASE)
 
 
 def _cited_source_ids(pac_code: str) -> set[str]:
-    """SIDs realmente citados como ``' fuente: SX`` en el código."""
+    """SIDs realmente citados en el código, en cualquiera de las formas que usa
+    el modelo: ``' fuente: S2``, ``' texto ' fuente: S2`` o ``' texto (fuente: S2)``."""
     return {sid.upper() for sid in _SOURCE_CITATION.findall(pac_code or "")}
 
 

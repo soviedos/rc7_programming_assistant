@@ -41,6 +41,37 @@ def test_cited_ids_finds_inline_citations() -> None:
     assert _cited_source_ids(code) == {"S2"}
 
 
+def test_cited_ids_accepts_the_parenthesised_form() -> None:
+    """El modelo no siempre sigue el formato que pide el prompt.
+
+    El prompt enseña `' fuente: S2`, pero en respuestas reales también escribe
+    `' comentario (fuente: S2)`. Anclar el patrón al apóstrofo dejaba fuera esa
+    variante: el filtro no veía citas y la leyenda caía al mapa completo — el
+    bug que devolvió 6 fuentes para un código que citaba 2.
+    """
+    code = (
+        "    TAKEARM                    ' Obtiene el control del brazo (fuente: S2)\n"
+        "    DRIVEA (1, 45), (2, -30)   ' Mueve eje 1 a 45 grados (fuente: S3)"
+    )
+    assert _cited_source_ids(code) == {"S2", "S3"}
+
+
+def test_cited_ids_accepts_both_forms_in_one_program() -> None:
+    code = "A ' fuente: S1\nB ' texto (fuente: S2)\nC ' texto ' fuente: S3"
+    assert _cited_source_ids(code) == {"S1", "S2", "S3"}
+
+
+def test_cited_ids_does_not_match_the_legend_block_itself() -> None:
+    """La leyenda ya anotada no debe contarse como cita."""
+    legend = (
+        "' ─── Fuentes (trazabilidad) ───\n"
+        "' S1 = program1 e, pág. 181\n"
+        "' S2 = program1 e, pág. 312\n"
+        "' ──────────────────────────────"
+    )
+    assert _cited_source_ids(legend) == set()
+
+
 def test_cited_ids_is_case_insensitive_and_deduplicates() -> None:
     code = "A ' fuente: S2\nB ' FUENTE: s2\nC ' fuente: S6"
     assert _cited_source_ids(code) == {"S2", "S6"}
