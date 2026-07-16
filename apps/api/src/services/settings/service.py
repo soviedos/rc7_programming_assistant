@@ -203,16 +203,16 @@ DEFAULT_SETTINGS: dict[str, tuple[str, str]] = {
         "Tiempo máximo de espera para llamadas a Gemini (segundos)",
     ),
     "rag_top_k_chunks": (
-        "18",
-        "Fragmentos RAG enviados como contexto. Medido (fragmentos con código PAC "
-        "utilizable): 6→2-4, 12→7-9, 18→9-15. Con 18 el contexto es ~6k tokens: "
-        "0,6% de la ventana de Gemini, sin cambio de latencia",
+        "24",
+        "Fragmentos RAG enviados como contexto. Medido tras HyDE (fragmentos con "
+        "código PAC ejecutable, según la consulta): 6→1-6, 12→2-12, 18→3-15, "
+        "24→4-17. Con 24 el contexto es ~7k tokens: 0,7% de la ventana de Gemini",
     ),
     "rag_context_budget_chars": (
-        "24000",
+        "32000",
         "Presupuesto de caracteres para el contexto RAG. Si se agota, los "
         "fragmentos restantes se descartan EN SILENCIO: debe dar cabida a "
-        "rag_top_k_chunks (18 fragmentos llegan a ~23.000 chars en el peor caso "
+        "rag_top_k_chunks (24 fragmentos llegan a ~26.000 chars en el peor caso "
         "medido) o recuperar de más no sirve de nada",
     ),
     "rag_candidate_pool": (
@@ -405,10 +405,10 @@ _ONE_PROGRAM_RULE = _DEFAULT_PAC_RULES[
 
 _RETRIEVAL_UPGRADES: dict[str, tuple[set[str], str]] = {
     # clave: (defaults anteriores CONOCIDOS, valor nuevo). Se listan todos los que
-    # han existido: una instalación puede venir del original (6) o del intermedio
-    # (12), y ambas deben converger al actual.
-    "rag_top_k_chunks": ({"6", "12"}, "18"),
-    "rag_context_budget_chars": ({"12000", "16000"}, "24000"),
+    # han existido: una instalación puede venir del original (6) o de cualquier
+    # intermedio (12, 18), y todas deben converger al actual.
+    "rag_top_k_chunks": ({"6", "12", "18"}, "24"),
+    "rag_context_budget_chars": ({"12000", "16000", "24000"}, "32000"),
 }
 
 

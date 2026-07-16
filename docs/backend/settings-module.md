@@ -28,8 +28,8 @@ Todos los endpoints requieren rol `admin`.
 | `gemini_temperature` | `float` | `0.7` | Temperatura de generación Gemini (0.0–1.0) | Controla la aleatoriedad de las respuestas: 0.0 = determinista, 1.0 = más creativo |
 | `gemini_max_tokens` | `int` | `8192` | Límite de tokens de salida en Gemini (Phase 4 fuerza `response_mime_type=application/json` para emitir JSON puro) | Respuestas truncadas si el modelo alcanza el límite; con Gemini 3.5 Flash se recomienda ≥ 8192 para código PAC completo |
 | `gemini_timeout_seconds` | `int` | `300` | Timeout (segundos) de cada llamada a Gemini. **Ahora se lee** y se propaga al cliente en las 4 fases (fallback al env `GEMINI_TIMEOUT_SECONDS`). | Requests más largos fallan con timeout |
-| `rag_top_k_chunks` | `int` | `18` | Chunks finales (tras re-rank) enviados como contexto | Medido sobre consultas reales, contando fragmentos con código PAC utilizable: con 6 llegaban 2-4 y el resto eran portadas y prefacios; con 12 llegan 7-9; con 18, 9-15. Con 18 el contexto ronda los 6k tokens — 0,6 % de la ventana de Gemini — y la latencia no cambia de forma medible |
-| `rag_context_budget_chars` | `int` | `24000` | Presupuesto de caracteres de contexto enviado a Gemini | Limita el contexto RAG en la Fase 4. **Debe dar cabida a `rag_top_k_chunks`**: al agotarse, los fragmentos restantes se descartan en silencio (`break`), así que subir top-k sin subir esto no sirve de nada. 18 fragmentos llegan a ~23.000 chars en el peor caso medido |
+| `rag_top_k_chunks` | `int` | `24` | Chunks finales (tras re-rank) enviados como contexto | Ver [la medición](#cuánto-aporta-subir-top-k) abajo. Con 24 el contexto ronda los 7k tokens — 0,7 % de la ventana de Gemini — y la latencia no cambia de forma medible |
+| `rag_context_budget_chars` | `int` | `32000` | Presupuesto de caracteres de contexto enviado a Gemini | Limita el contexto RAG en la Fase 4. **Debe dar cabida a `rag_top_k_chunks`**: al agotarse, los fragmentos restantes se descartan en silencio (`break`), así que subir top-k sin subir esto no sirve de nada. 24 fragmentos llegan a ~26.000 chars en el peor caso medido |
 | `rag_candidate_pool` | `int` | `50` | Vecinos recuperados de pgvector (`<=>`/HNSW) antes del re-rank por hardware/categoría. También fija `hnsw.ef_search`. | Pool mayor = mejor recall, algo más de cómputo |
 | `system_prompt_pac` | `str` | *(ver abajo)* | Reglas de sintaxis PAC incluidas en el system prompt de Gemini | Define el comportamiento y restricciones del asistente |
 | `history_max_entries` | `int` | `50` | Máximo de entradas de historial de chat por usuario | Al superarse, las entradas más antiguas se eliminan automáticamente |
@@ -46,6 +46,31 @@ Todos los endpoints requieren rol `admin`.
 > (requiere reinicio). `gemini_embed_dim` debe coincidir con la columna `vector(N)`. El default
 > sembrado de `system_prompt_pac` ya está **alineado** con la trazabilidad por IDs de fuente; las
 > instalaciones existentes deben ejecutar `POST /admin/settings/reset` para adoptarlo.
+
+---
+
+## Cuánto aporta subir top-k
+
+Medido sobre las tres consultas reales que fallaron en WinCaps III, contando los fragmentos que traen
+**código PAC ejecutable** en vez de portadas, prefacios y folletos comerciales:
+
+| Consulta | top6 | top12 | top18 | **top24** | top30 |
+|---|---|---|---|---|---|
+| VP-6242 (RC7M) | 1 | 2 | 3 | **4** | 6 |
+| joint 1 a 45° | 6 | 12 | 15 | **17** | 21 |
+| multitarea con entrada digital | 6 | 10 | 12 | **14** | 18 |
+| chars (peor caso) | 7.588 | 14.871 | 19.823 | **25.885** | 32.371 |
+
+> **Hay que medir por el camino real** (HyDE → embedding de `prompt + hipótesis` → retrieve). Embebiendo
+> la consulta cruda salen otros números: VP-6242 se queda en 1 fragmento útil en *todos* los niveles,
+> porque sin HyDE esa consulta recupera fichas de producto en vez de código. Una medición sin HyDE no
+> describe lo que hace el sistema en producción.
+
+VP-6242 rinde mucho peor que las otras dos en todos los niveles. No es un problema de top-k: es que el
+corpus tiene poco código asociado a ese modelo concreto. Subir top-k lo mitiga, no lo resuelve.
+
+Los recuentos varían un poco entre ejecuciones aunque `hyde_temperature` sea `0.0` — Gemini no es
+estrictamente determinista — así que conviene leerlos como tendencia, no como cifras exactas.
 
 ---
 
@@ -114,8 +139,8 @@ default cambia, hace falta una migración dirigida. `seed_default_settings`
 
 Todas comparten el mismo criterio: **solo tocan filas que siguen en un default anterior conocido**. Un
 valor puesto a propósito desde la consola admin sobrevive al despliegue. `upgrade_retrieval_defaults`
-lista *todos* los defaults que han existido (`{"6", "12"} → "18"`), no solo el original, porque una
-instalación puede venir de cualquier versión intermedia y todas deben converger.
+lista *todos* los defaults que han existido (`{"6", "12", "18"} → "24"`), no solo el original, porque
+una instalación puede venir de cualquier versión intermedia y todas deben converger.
 
 > **Cuidado al editar `DEFAULT_SETTINGS`:** `description` es `VARCHAR(255)`. Una descripción más larga
 > hace que `seed_if_empty` lance `DataError`, e `initialize_database` lo propaga desde el `lifespan`:

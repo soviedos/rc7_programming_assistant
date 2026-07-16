@@ -1,16 +1,25 @@
 """Tests de la subida de top-k y del presupuesto de contexto.
 
-Medido sobre las tres consultas reales que fallaron en WinCaps III, contando los
-fragmentos que traen código PAC utilizable: con top_k=6 llegaban 2-4 y el resto
-eran portadas, prefacios y folletos; con 12 llegan 7-9; con 18, 9-15.
+Medido sobre las tres consultas reales que fallaron en WinCaps III, POR EL CAMINO
+REAL (HyDE → embedding de prompt+hipótesis → retrieve), contando los fragmentos
+que traen código PAC ejecutable en vez de portadas, prefacios y folletos:
 
-El presupuesto sube con él porque _run_rag_phases descarta EN SILENCIO lo que no
-cabe (`break`), así que 18 fragmentos (~23.000 chars en el peor caso medido) se
-habrían recortado a ~12 sin avisar: recuperar de más no habría servido de nada.
+    consulta        top6   top12   top18   top24   top30
+    VP-6242            1       2       3       4       6
+    joint 1 a 45°      6      12      15      17      21
+    multitarea         6      10      12      14      18
+
+Medir embebiendo la consulta cruda da otra cosa (VP-6242 se queda en 1 útil en
+todos los niveles): sin HyDE esa consulta recupera fichas de producto, no código.
+
+El presupuesto sube con top-k porque _run_rag_phases descarta EN SILENCIO lo que
+no cabe (`break`), así que 24 fragmentos (~26.000 chars en el peor caso medido)
+con 24.000 se habrían recortado sin avisar: recuperar de más no serviría de nada.
 """
 
 from __future__ import annotations
 
+import pytest
 from sqlalchemy.orm import Session
 
 from src.db.models.settings import SystemSetting
@@ -23,8 +32,8 @@ from src.services.settings.service import (
 
 
 def test_defaults_are_the_measured_values() -> None:
-    assert DEFAULT_SETTINGS["rag_top_k_chunks"][0] == "18"
-    assert DEFAULT_SETTINGS["rag_context_budget_chars"][0] == "24000"
+    assert DEFAULT_SETTINGS["rag_top_k_chunks"][0] == "24"
+    assert DEFAULT_SETTINGS["rag_context_budget_chars"][0] == "32000"
 
 
 def test_every_description_fits_the_column() -> None:
@@ -38,15 +47,21 @@ def test_every_description_fits_the_column() -> None:
     assert not largas, f"descripciones que exceden VARCHAR({limite}): {largas}"
 
 
+# Peor caso medido con la cabecera [SX | manual — pág. N] incluida, que es lo que
+# de verdad consume presupuesto: 25.885 chars / 24 fragmentos ≈ 1.080 por fragmento.
+# Se redondea a 1.300 para dejar margen: el tamaño varía con el manual que toque.
+_CHARS_POR_FRAGMENTO = 1300
+
+
 def test_budget_can_hold_top_k_chunks() -> None:
     """El presupuesto debe dar cabida a top_k, o recuperar de más no sirve.
 
-    Los chunks miden ~1000 chars de media más la cabecera [SX | manual — pág. N].
-    Con 18 × ~1300 = ~23.400 en el peor caso medido, 24.000 deja margen.
+    Es el invariante que ata las dos claves: subir una sin la otra hace que la
+    fase 3 recorte en silencio y el trabajo extra de recuperación se tire.
     """
     top_k = int(DEFAULT_SETTINGS["rag_top_k_chunks"][0])
     budget = int(DEFAULT_SETTINGS["rag_context_budget_chars"][0])
-    assert budget >= top_k * 1300
+    assert budget >= top_k * _CHARS_POR_FRAGMENTO
 
 
 def test_upgrade_moves_settings_still_at_the_old_default(db_session: Session) -> None:
@@ -60,22 +75,28 @@ def test_upgrade_moves_settings_still_at_the_old_default(db_session: Session) ->
 
     assert set(cambiadas) == {"rag_top_k_chunks", "rag_context_budget_chars"}
     rows = {r.key: r.value for r in db_session.query(SystemSetting).all()}
-    assert rows["rag_top_k_chunks"] == "18"
-    assert rows["rag_context_budget_chars"] == "24000"
+    assert rows["rag_top_k_chunks"] == "24"
+    assert rows["rag_context_budget_chars"] == "32000"
 
 
-def test_upgrade_also_moves_the_intermediate_default(db_session: Session) -> None:
-    """Una instalación puede venir del default original (6) o del intermedio (12).
+@pytest.mark.parametrize("viejo", ["6", "12", "18"])
+def test_upgrade_moves_every_default_that_has_ever_existed(
+    db_session: Session, viejo: str
+) -> None:
+    """Una instalación puede venir del default original (6) o de un intermedio.
 
-    Ambas deben converger: si solo se contemplara el original, quien ya hubiera
-    desplegado la versión con 12 se quedaría ahí para siempre.
+    Todas deben converger: si solo se contemplara el original, quien ya hubiera
+    desplegado una versión intermedia se quedaría ahí para siempre, porque
+    seed_if_empty nunca pisa un valor existente.
     """
-    db_session.add(SystemSetting(key="rag_top_k_chunks", value="12", description="x"))
+    db_session.add(
+        SystemSetting(key="rag_top_k_chunks", value=viejo, description="x")
+    )
     db_session.commit()
 
     assert "rag_top_k_chunks" in upgrade_retrieval_defaults(db_session)
     row = db_session.query(SystemSetting).filter_by(key="rag_top_k_chunks").one()
-    assert row.value == "18"
+    assert row.value == "24"
 
 
 def test_upgrade_respects_a_deliberate_admin_value(db_session: Session) -> None:
