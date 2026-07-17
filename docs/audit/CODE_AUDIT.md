@@ -8,8 +8,13 @@
 
 ## Resumen
 
-> **Actualización:** todas las propuestas accionables fueron **aplicadas** (los tests siguen
-> verdes: API 76/76, worker 13/13). Solo **D2** quedó evaluado y no aplicado, con justificación.
+> **Este informe es histórico**: la tabla de resumen refleja el estado actual, pero **los cuerpos
+> de cada hallazgo describen la situación en la fecha de la auditoría** y están redactados como
+> propuestas. No los leas como el estado de hoy; donde uno haya quedado superado se indica en su
+> propia sección.
+>
+> **Actualización:** todas las propuestas accionables fueron **aplicadas**, D2 incluido (ver más
+> abajo: la decisión original de no extraer el paquete se revirtió). Los tests siguen verdes.
 
 | # | Categoría | Severidad | ¿Cambia comportamiento? | Estado |
 |---|---|---|---|---|
@@ -19,7 +24,7 @@
 | O1 | Setting `gemini_timeout_seconds` (DB) nunca se lee | media | Sí | ✅ Aplicado (ahora se lee y propaga) |
 | O2 | Modelo `Manual` del worker sin columna `sha256` | baja | No | ✅ Aplicado |
 | D1 | Strings de modelo Gemini dispersos/hardcodeados | media | Sí | ✅ Aplicado (centralizados en config) |
-| D2 | `ManualStorageService` duplicado API/worker | baja | Sí | ⚖️ Evaluado · no aplicado |
+| D2 | `ManualStorageService` duplicado API/worker | baja | Sí | ✅ Aplicado (extraído a `rc7_shared_storage`) |
 | C1 | Seed `system_prompt_pac` contradice trazabilidad de `references` | media | Sí | ✅ Aplicado |
 | C2 | Defaults de código ≠ defaults de `.env.example` | baja | No | Corregido |
 | C3 | `delete_user` audita como `ADMIN_USER_TOGGLED` | baja | Sí | ✅ Aplicado (`ADMIN_USER_DELETED`) |
@@ -58,21 +63,23 @@ No se aplica (cambia comportamiento).
 ## 2. Código huérfano / muerto
 
 ### O1 — Setting `gemini_timeout_seconds` (DB) nunca se lee · `apps/api/src/services/settings/service.py:159` · **media** · cambia comportamiento → propuesta
-El catálogo de settings siembra y expone en la consola admin la clave `gemini_timeout_seconds`,
-pero `get_setting_value` **nunca** se invoca para esa clave (ver usos en
-[chat/service.py](../../apps/api/src/services/chat/service.py) y [chat.py](../../apps/api/src/api/v1/routes/chat.py)).
-El cliente Gemini usa la variable de entorno `settings.gemini_timeout_seconds`
-([core/config.py:29](../../apps/api/src/core/config.py#L29) → [chat/service.py:64](../../apps/api/src/services/chat/service.py#L64)).
-**Cambiar este setting desde la consola admin no tiene ningún efecto.**
-Propuesta: o bien leer el setting de DB en `_get_client`, o eliminar la clave del catálogo y documentar
-que el timeout es por entorno.
+El catálogo sembraba y exponía en la consola admin la clave `gemini_timeout_seconds`, pero
+`get_setting_value` nunca se invocaba para ella: el cliente Gemini usaba solo la variable de
+entorno, así que **cambiar el setting desde la consola no tenía ningún efecto**.
 
-### O2 — Modelo `Manual` del worker sin `sha256` · `apps/worker/src/db/models/manual.py` · **baja** · no cambia comportamiento → propuesta
-La tabla `manuals` tiene columna `sha256` (definida en el modelo del API
-[packages/rc7_shared_db/rc7_shared_db/models/manual.py:21](../../packages/rc7_shared_db/rc7_shared_db/models/manual.py#L21) y creada por
-`init.py`). El modelo del worker **no** declara `sha256`, dando dos vistas ORM divergentes de la
-misma tabla. No es un bug (el worker no usa esa columna) pero es inconsistente. Propuesta: añadir la
-columna al modelo del worker por paridad, o documentar la divergencia.
+**Ya no es así:** `_load_chat_params` lo lee de la BD y lo propaga a las 4 fases, con la variable de
+entorno como fallback (`get_setting_value(db, "gemini_timeout_seconds", …)` en
+[chat/service.py](../../apps/api/src/services/chat/service.py)). El campo vive hoy en
+`rc7_shared_config`, no en el `config.py` de la API.
+
+### O2 — Modelo `Manual` del worker sin `sha256` · **baja** · ✅ Aplicado
+El worker tenía su propio modelo `Manual` sin la columna `sha256`, dando dos vistas ORM divergentes
+de la misma tabla.
+
+**Se resolvió por consolidación, no por paridad:** `apps/worker/src/db/models/manual.py` ya no
+existe. La única definición está en
+[`rc7_shared_db/models/manual.py`](../../packages/rc7_shared_db/rc7_shared_db/models/manual.py), que
+sí declara `sha256`, y ambos servicios la importan. No hay dos vistas que reconciliar.
 
 > No se encontraron funciones, clases ni endpoints completamente sin referencias. Las ramas
 > `regenerate` de autofix (`apply_safe_chunk_autofixes`) están intencionalmente no implementadas y
@@ -97,13 +104,19 @@ El API **no** tiene un setting `gemini_model`. Propuesta: centralizar los nombre
 `config.py` (variables de entorno `GEMINI_MODEL`, `GEMINI_EMBEDDING_MODEL`) en ambos servicios.
 No se aplica porque pasar de constante a env cambia comportamiento.
 
-### D2 — `ManualStorageService` duplicado · `apps/api/src/services/manuals/storage.py` y `apps/worker/src/services/storage.py` · **baja** · ⚖️ evaluado · NO aplicado
-Ambos servicios implementan un `ManualStorageService` casi idéntico. **Decisión: no extraer un
-paquete compartido.** Ambos Dockerfiles construyen con contexto raíz pero `COPY` solo su propio
-directorio (`apps/api` / `apps/worker`); un paquete común exigiría cambios coordinados en ambos
-Dockerfiles, en los dos `pyproject.toml` y en el `PYTHONPATH`, acoplando dos servicios deliberadamente
-separados a cambio de ~40 líneas. El riesgo de romper el build de producción supera el beneficio.
-Se mantiene la duplicación intencional.
+### D2 — `ManualStorageService` duplicado · **baja** · ✅ Aplicado
+Ambos servicios implementaban un `ManualStorageService` casi idéntico.
+
+**La decisión original fue no extraerlo** (se argumentó que coordinar los dos Dockerfiles, los dos
+`pyproject.toml` y el `PYTHONPATH` arriesgaba el build de producción a cambio de ~40 líneas). **Esa
+decisión se revirtió y el paquete sí se extrajo**: hoy la única definición vive en
+[`packages/rc7_shared_storage`](../../packages/rc7_shared_storage/), y
+`apps/api/src/services/manuals/storage.py` y `apps/worker/src/services/storage.py` son re-exports de
+11 líneas que solo le inyectan el `settings` de su servicio.
+
+El riesgo que se temía no se materializó: los Dockerfiles instalan los tres paquetes compartidos
+editables (`rc7_shared_db`, `rc7_shared_config`, `rc7_shared_storage`) y el mismo patrón ya estaba
+en uso para los otros dos.
 
 > **Deduplicación ya realizada (positivo):** la construcción de `references` que antes se repetía en
 > el camino síncrono y de streaming del chat se centralizó en `_resolve_references`
@@ -205,7 +218,9 @@ Propuesta: unificar en el SDK.
 | **S5** | `GeminiSemanticReviewer` usa el SDK `google-genai` (no urllib). | `semantic_review.py` |
 | **E3** | Error a mitad de stream ahora audita `CHAT_QUERY_FAILED`. | `routes/chat.py` |
 
-**Tests tras los cambios:** API **76/76**, worker **13/13**.
+**Tests tras los cambios:** verdes en las tres suites. No se fijan aquí los números absolutos:
+quedan obsoletos a la primera prueba nueva. Para el conteo del día, correr las suites
+(ver [testing.md](../operations/testing.md)).
 
 ### No aplicado
 - **D2** — duplicación de `ManualStorageService`: evaluada y mantenida intencionalmente (ver arriba).

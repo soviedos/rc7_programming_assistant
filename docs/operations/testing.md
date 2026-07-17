@@ -4,7 +4,9 @@
 
 Las pruebas automatizadas validan exclusivamente el comportamiento implementado. No se simula cobertura sobre módulos que aún no existen.
 
-Todas las suites se ejecutan dentro de Docker usando `docker compose exec ...`.
+Todas las suites se ejecutan dentro de Docker: `docker compose exec` para api y worker,
+y `docker compose run --rm web-test` para el frontend (el contenedor `web` es el build
+standalone de producción y no lleva devDependencies, así que ahí no existe `vitest`).
 
 ---
 

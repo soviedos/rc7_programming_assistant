@@ -210,8 +210,11 @@ curl -s http://localhost:8000/api/v1/health/ | python3 -m json.tool
 | `ENABLE_STREAMING` | No | `true` | Activa SSE streaming en `/chat/generate` |
 | `CORS_ORIGINS` | No | `["http://localhost:3000"]` | Orígenes permitidos en CORS |
 
-> En `APP_ENV=production`, las variables marcadas con * y `JWT_SECRET` / `GEMINI_API_KEY`
-> son validadas al arrancar — el proceso falla si contienen valores por defecto o débiles.
+> En `APP_ENV=production` se validan al arrancar las variables marcadas con *, `JWT_SECRET`,
+> `GEMINI_API_KEY`, `BOOTSTRAP_ADMIN_PASSWORD` (no puede estar vacía ni ser una contraseña
+> débil o de ejemplo) y `CORS_ORIGINS` (no puede contener `localhost` ni `127.0.0.1`).
+> El proceso **falla al arrancar** si alguna no pasa. Ver `production_errors()` en
+> [apps/api/src/core/config.py](apps/api/src/core/config.py).
 
 ---
 
@@ -242,8 +245,9 @@ rc7_programming_assistant/
 │   ├── web/          # Frontend Next.js 16
 │   └── worker/       # Worker de ingestión documental
 ├── packages/
-│   ├── rc7_shared_config/ # SharedSettings: config común + validación de secretos (api y worker)
-│   └── rc7_shared_db/     # Modelos ORM, Base y migraciones compartidas (api y worker)
+│   ├── rc7_shared_config/  # SharedSettings: config común + validación de secretos (api y worker)
+│   ├── rc7_shared_db/      # Modelos ORM, Base y migraciones compartidas (api y worker)
+│   └── rc7_shared_storage/ # ManualStorageService: cliente MinIO compartido (api y worker)
 ├── docs/             # Documentación técnica
 │   ├── architecture/ # Visión general, decisiones, diagramas Mermaid (ARCHITECTURE.md)
 │   ├── backend/      # Módulos API: endpoints, settings, audit

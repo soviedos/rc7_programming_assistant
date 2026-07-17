@@ -11,9 +11,9 @@ streaming SSE, y consola de administración.
 |---|---|---|
 | Next.js | `16.2.4` (App Router, `output: "standalone"`) | Framework React + proxy de API |
 | React / React DOM | `19.2.5` | UI |
-| TypeScript | `^6` | Tipado estático |
+| TypeScript | `6.0.3` | Tipado estático |
 | Tailwind CSS | `^4` (+ `@tailwindcss/postcss`) | Estilos |
-| lucide-react, clsx, class-variance-authority, tailwind-merge | — | UI utilities |
+| lucide-react, clsx, tailwind-merge | — | UI utilities |
 | Vitest + Testing Library + jsdom | — | Testing |
 
 ---

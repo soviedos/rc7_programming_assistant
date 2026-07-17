@@ -62,8 +62,11 @@ proxy; en desarrollo no hay nginx y el proxy de Next.js cumple ese rol para `/ap
   servicios necesitan (Postgres, MinIO, modelos y timeout de Gemini) y las
   validaciones de secretos en producción. Los `Settings` de `api` y `worker`
   heredan de él y declaran solo sus campos propios.
+- `packages/rc7_shared_storage/` define `ManualStorageService`: el cliente MinIO
+  (subir, descargar y borrar el PDF de un manual). Los `storage.py` de `api` y
+  `worker` son re-exports que le inyectan el `settings` de su servicio.
 
-`api` y `worker` instalan ambos paquetes editable en sus imágenes.
+`api` y `worker` instalan los tres paquetes editable en sus imágenes.
 
 ---
 
@@ -78,9 +81,10 @@ flowchart TD
     B --> C["Worker loop · polling ~5s\nclaim_next_pending_manual()\nSELECT FOR UPDATE SKIP LOCKED → processing"]:::process
     C --> D["storage.download_manual() desde MinIO"]:::process
     D --> E["extract_pdf_text_by_page()\npypdf, por página"]:::process
-    E --> F{"¿texto útil?"}:::decision
+    E --> E2["extract_page_sections()\noutline del PDF → sección por página\n{} si el PDF no trae outline"]:::process
+    E2 --> F{"¿texto útil?"}:::decision
     F -- No --> Z1["status=failed\nlast_error='No se pudo extraer texto util...'"]:::danger
-    F -- Sí --> G["build_text_chunks()\nsemántico, max 1200 chars/párrafo"]:::process
+    F -- Sí --> G["build_text_chunks()\nestructural: párrafos por página, max 1200 chars\nanota section_title sin alterar los cortes"]:::process
     G --> H{"¿manual elegible?\nidioma ∈ es,en y filtro de título"}:::decision
     H -- No --> K["sin revisiones"]:::note
     H -- Sí --> I["select_chunks_for_semantic_review()\nsample_rate=1.0 ⇒ TODOS\ntoo_short / too_long / suspicious / sampled"]:::process
@@ -120,11 +124,11 @@ flowchart TD
     Q["POST /api/v1/chat/generate (ChatRequest)"]:::io --> P1["Fase 1 — HyDE\n_call_gemini() prosa, sin contexto\nsystem=_PHASE1_SYSTEM"]:::phase
     P1 --> P2["Fase 2 — Embed + Retrieve\n_embed_query('task: search result | query: '+prompt+HyDE[:600])\n_retrieve_chunks()"]:::phase
     P2 --> R1["pgvector · ORDER BY embedding::halfvec(3072) &lt;=&gt; query\nLIMIT 50 (HNSW)"]:::data
-    R1 --> R2["re-rank Python:\nscore = (1-distancia) · hardware_factor · category_factor\ntop_k (default 6)"]:::data
+    R1 --> R2["re-rank Python:\nscore = (1-distancia) · hardware_factor · category_factor\ntop_k (default 24)"]:::data
     R2 --> P3["Fase 3 — Contexto\nfragmentos etiquetados [S1],[S2]… hasta budget chars\nsource_map: SID → (manual, página)"]:::phase
     P3 --> P4["Fase 4 — Generación final\n_call_gemini(force_json=True)\nsystem=_build_system_prompt (reglas PAC + trazabilidad)"]:::phase
-    P4 --> PARSE["_parse_gemini_json() + _resolve_references()\ndescarta IDs alucinados · fallback al set recuperado"]:::process
-    PARSE --> OUT["JSON: summary · pac_code (con ' fuente: SX) · references"]:::process
+    P4 --> PARSE["_finalize_response() — post-proceso determinista:\n1. _parse_gemini_json (repara truncados y basura tras el JSON)\n2. _lint_pac_code (reescribe MOVE J, J(...)…)\n3. _resolve_references (descarta IDs alucinados · fallback al set recuperado)\n4. _prepend_source_legend (leyenda de fuentes en el .pac)\n5. _pac_advisories (avisos semánticos, no reescriben)"]:::process
+    PARSE --> OUT["JSON: summary · pac_code (con ' fuente: SX) · references · advisories"]:::process
     OUT --> SSE{"ENABLE_STREAMING?"}:::decision
     SSE -- "true" --> S1["SSE: chunk* → done\npersistir historial + audit CHAT_QUERY"]:::ok
     SSE -- "false" --> S2["único evento done\nsync; 503 si falla"]:::ok
@@ -137,10 +141,12 @@ flowchart TD
     classDef ok fill:#052e16,stroke:#4ade80,stroke-width:2px,color:#dcfce7
 ```
 
-Parámetros configurables en caliente (`system_settings`): `rag_top_k_chunks` (6),
-`rag_context_budget_chars` (12000), `gemini_temperature` (0.7), `gemini_max_tokens` (8192),
-`system_prompt_pac`, `history_max_entries` (50), `rag_candidate_pool` (50) y
-`gemini_timeout_seconds` (300). Los modelos Gemini se configuran por entorno
+Parámetros configurables en caliente (`system_settings`), las 9 claves de `DEFAULT_SETTINGS`:
+`rag_top_k_chunks` (24), `rag_context_budget_chars` (32000), `rag_candidate_pool` (50),
+`gemini_temperature` (0.7), `hyde_temperature` (0.0 — solo la Fase 1: su salida alimenta el
+embedding de búsqueda y no se muestra, así que no comparte la temperatura de generación),
+`gemini_max_tokens` (8192), `gemini_timeout_seconds` (300), `system_prompt_pac` y
+`history_max_entries` (50). Los modelos Gemini se configuran por entorno
 (`GEMINI_GEN_MODEL`, `GEMINI_EMBED_MODEL`), centralizados en
 `packages/rc7_shared_config`.
 
@@ -290,9 +296,11 @@ sequenceDiagram
 
 ## 8. Modelo de datos (ER)
 
-Relaciones con **FK declarada** = líneas sólidas. Referencias lógicas (columna `int` indexada sin
-`ForeignKey`: `chat_history.user_id`, `audit_log.actor_id`, `system_settings.updated_by`,
-`manuals.uploaded_by_user_id`) se documentan en nota, no como relación.
+Relaciones con **FK declarada** = líneas sólidas. Referencias lógicas (columna `int` sin
+`ForeignKey`) se documentan en nota, no como relación: `chat_history.user_id`,
+`audit_log.actor_id` y `manuals.uploaded_by_user_id` están indexadas;
+`system_settings.updated_by` **no** lo está (es la única de las cuatro sin índice, y no se
+filtra por ella).
 
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{'fontFamily':'ui-sans-serif, system-ui','fontSize':'13px','lineColor':'#94a3b8','primaryColor':'#1e293b','primaryBorderColor':'#475569','primaryTextColor':'#e2e8f0','attributeBackgroundColorOdd':'#0f172a','attributeBackgroundColorEven':'#16233a'}}}%%
@@ -342,6 +350,7 @@ erDiagram
         int manual_id FK
         int chunk_index
         int page_number
+        string section_title "outline del PDF, nullable"
         text text
         vector embedding "vector(3072)"
         datetime created_at

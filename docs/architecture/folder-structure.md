@@ -33,12 +33,13 @@ rc7_programming_assistant/
 │       │   ├── jobs/           # Definición de trabajos ejecutables
 │       │   ├── parsers/        # Extracción de texto desde PDFs
 │       │   ├── chunking/       # Segmentación para retrieval
-│       │   ├── services/       # Integraciones externas (MinIO)
+│       │   ├── services/       # MinIO + Gemini (embeddings y revisión semántica)
 │       │   └── utils/          # Utilidades del pipeline (logging)
 │       └── tests/              # Pruebas del worker
 ├── packages/                   # Paquetes compartidos por api y worker (editable install)
 │   ├── rc7_shared_config/      # SharedSettings: config común + validación de secretos
-│   └── rc7_shared_db/          # Base ORM, modelos y migraciones compartidas
+│   ├── rc7_shared_db/          # Base ORM, modelos y migraciones compartidas
+│   └── rc7_shared_storage/     # ManualStorageService: cliente MinIO compartido
 ├── docs/                       # Documentación técnica
 │   ├── architecture/           # Arquitectura y diseño
 │   ├── audit/                  # Auditorías de código y doc-vs-código

@@ -9,6 +9,8 @@ Documentación técnica del backend del RC7 Programming Assistant, construido co
 | Documento | Descripción |
 |---|---|
 | [api-modules.md](./api-modules.md) | Módulos implementados, parciales y planificados de la API |
+| [settings-module.md](./settings-module.md) | Parámetros configurables en caliente, medición de top-k y migraciones del seed |
+| [audit-module.md](./audit-module.md) | Registro de eventos: endpoints, filtros y catálogo de tipos |
 
 ## Alcance
 

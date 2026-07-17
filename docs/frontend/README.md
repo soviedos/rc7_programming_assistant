@@ -29,15 +29,19 @@ La interfaz se comporta como una **herramienta de ingeniería asistida**, no com
 ### `/chat` — Workspace del asistente
 
 - Header con identidad del sistema y menú de usuario
-- Panel de conversación con historial de mensajes
-- Sidebar de historial de consultas
+- Tres columnas (ver [workspace-layout.md](./workspace-layout.md)):
+  - Izquierda: configuración del robot (`HistorySidebar` — el nombre engaña, no es el historial)
+  - Centro: canvas del último código PAC generado, con pestañas Código / Troubleshooting /
+    Entrenamiento y la barra de input
+  - Derecha: la conversación, las fuentes citadas (ID, manual y página) y el historial
 
 ### Consola administrativa
 
 - `/admin/manuals` — Listado de manuales con estado de ingestión y progreso. Modal
   de carga múltiple con título extraído del nombre del PDF, selector de idioma y
   categorías por archivo. El modal de edición permite cambiar título, notas y
-  categorías (el modelo de robot y la versión de controlador solo se muestran).
+  categorías; el modelo de robot y la versión de controlador se muestran en la tarjeta
+  del listado y no son editables.
 - `/admin/users` — Alta, edición y borrado de usuarios.
 - `/admin/roles` — Permisos por rol.
 - `/admin/settings` — Parámetros de Gemini/RAG ajustables en caliente.

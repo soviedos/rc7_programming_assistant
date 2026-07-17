@@ -26,9 +26,10 @@ El worker ejecuta el pipeline completo de ingestión:
 - Los marca como `processing`
 - Descarga el PDF desde MinIO
 - Extrae texto por página con pypdf
-- Genera chunks semánticos (`build_text_chunks`)
+- Genera chunks estructurales por página y presupuesto de caracteres
+  (`build_text_chunks`, 1200 chars; lo semántico es la etapa siguiente)
 - Revisión semántica con Gemini de **todos los chunks** (sin muestreo por defecto):
-  `coherence`, `completeness`, `boundary` + autocorrecciones seguras (merge/split)
+  `coherence`, `completeness`, `boundary` + autocorrecciones seguras (merge/split/regenerate)
 - Genera embeddings por chunk con `gemini-embedding-2` (3072-dim, un `types.Content` por chunk)
 - Persiste los chunks en PostgreSQL (`manual_chunks.embedding vector(3072)`)
 - Marca el manual como `indexed` o `failed`
@@ -38,17 +39,20 @@ El worker ejecuta el pipeline completo de ingestión:
 | Etapa | Descripción |
 |---|---|
 | **Parsing** | Extracción de texto por página desde PDFs con pypdf |
-| **Chunking** | Segmentación semántica en unidades recuperables |
+| **Chunking** | Segmentación estructural: empaqueta párrafos por página hasta 1200 chars, sin solapamiento y sin cruzar página |
 | **Revisión** | Evaluación con Gemini de todos los chunks + autocorrección segura |
 | **Embeddings** | Generación de vectores `gemini-embedding-2` (3072-dim) por chunk |
-| **Indexación** | Carga de chunks y vectores en PostgreSQL + pgvector (`vector(3072)` + HNSW) |
+| **Indexación** | Carga de chunks y vectores en PostgreSQL + pgvector (`vector(3072)`). El índice HNSW lo crea la API al inicializar la BD, no el worker |
 
 ### Cobertura de revisión (variables de entorno)
 
-La inspección de **todos** los chunks se controla vía `.env.example` (no hardcoded):
-`SEMANTIC_REVIEW_SAMPLE_RATE=1.0`, `SEMANTIC_REVIEW_MAX_REVIEWS_PER_MANUAL=0` (sin tope),
-y timeouts elevados (`WORKER_MANUAL_TIMEOUT_SECONDS=7200`,
-`WORKER_MANUAL_TIMEOUT_MAX_SECONDS=21600`) para no fallar al revisar manuales grandes.
+Los defaults viven en [`src/core/config.py`](src/core/config.py) y aplican **sin** `.env`:
+`semantic_review_sample_rate=1.0` (todos los chunks), `semantic_review_max_reviews_per_manual=0`
+(sin tope) y timeouts elevados (`worker_manual_timeout_seconds=7200`,
+`worker_manual_timeout_max_seconds=21600`) para no fallar al revisar manuales grandes.
+
+En `.env.example` esas variables están **comentadas**: solo documentan cómo sobrescribir los
+defaults, no los fijan.
 
 ### Re-embedding del corpus
 

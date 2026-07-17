@@ -15,7 +15,9 @@ Implementado. Ver [`nginx.conf`](./nginx.conf).
 - Terminación TLS con certificados en `infra/nginx/ssl/`
 - Headers de seguridad (HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy)
 - Compresión gzip para assets estáticos
-- Timeout extendido (130 s) para peticiones largas del pipeline Gemini
+- Timeouts: 130 s general y **310 s con `proxy_buffering off`** para el endpoint SSE
+  `/api/v1/chat/` — sin desactivar el buffering, nginx retendría los tokens del stream
+  y el efecto de tiempo real se perdería
 
 ## Uso
 

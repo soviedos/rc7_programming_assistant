@@ -173,15 +173,33 @@ docker compose -f docker-compose.prod.yml down
 
 ## CI/CD con GitHub Actions
 
-Ya está implementado en `.github/workflows/deploy.yml`, con tres jobs: `test-frontend`,
-`test-backend` (api y worker) y `deploy`, que solo corre en push a `main` y si todos los
-tests pasan.
+Ya está implementado en `.github/workflows/deploy.yml`, con tres jobs:
+
+- `test-frontend` — la suite de vitest sobre el runner, con `npm ci`.
+- `test-backend` — levanta postgres y minio y corre las **tres** suites dentro de Docker:
+  api, worker y también el frontend (`docker compose run --rm web-test`).
+- `deploy` — solo en push a `main` y si los tests pasan. Ojo: su condición es
+  `if: env.SERVER_HOST != ''`, así que **se salta en silencio** (job verde, sin desplegar)
+  si el secret `SERVER_HOST` no está configurado.
 
 ```
 git push a main → tests (web + api + worker) → SSH al servidor → git pull
                 → docker compose -f docker-compose.prod.yml up -d --build --wait
-                → rollback automático si algún healthcheck falla
+                  --wait-timeout 120
+                → si algún healthcheck falla, el script aborta y el deploy sale en rojo
 ```
+
+> **No hay rollback automático, pese a que el workflow contiene un bloque que lo pretende.**
+> El script corre con `set -e` (`deploy.yml:92`), así que cuando `up --wait` falla el script
+> **muere en esa línea** y el bloque de rollback de debajo (`deploy.yml:108-112`) nunca llega a
+> ejecutarse: es código inalcanzable. Y si llegara, su condición
+> (`ps --filter "status=running" | grep -q "running"`) solo comprueba que *algún* contenedor esté
+> corriendo, no que todos estén healthy.
+>
+> En la práctica: un healthcheck fallido deja el stack como quedara y hay que intervenir a mano.
+> Para arreglarlo habría que envolver el `up` en un `if ! …; then` (que además desactiva `set -e`
+> para ese comando) y decidir explícitamente qué debe pasar — `down` deja el sitio caído, que no
+> es un rollback.
 
 Secrets necesarios en GitHub Actions:
 - `SERVER_HOST` — IP o dominio del servidor
@@ -208,7 +226,7 @@ scp .env.example user@host:/ruta/del/proyecto/.env && chmod 600 .env   # y relle
       cd "${{ secrets.SERVER_WORKDIR }}"
       [[ -f .env ]] || exit 1          # aborta si no existe; nunca lo escribe
       git pull origin main
-      docker compose -f docker-compose.prod.yml up -d --build --wait
+      docker compose -f docker-compose.prod.yml up -d --build --wait --wait-timeout 120
 ```
 
 ---

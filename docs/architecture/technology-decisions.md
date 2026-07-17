@@ -187,11 +187,19 @@ generación a `gemini-3.5-flash` y el de embeddings a `gemini-embedding-2` (3072
 
 **Razonamiento:**
 - `gemini-embedding-2` no admite `task_type`: para documentos se envuelve cada chunk en su propio
-  `types.Content` con prefijo `"title: none | text: …"` (un embedding por chunk en vez de uno
-  agregado); para la query se prefija `"task: search result | query: …"`.
-- La dimensión 3072 está centralizada y debe coincidir en API (`_EMBED_DIM`), worker
-  (`_OUTPUT_DIMENSIONALITY`) y el modelo (`Vector(3072)`).
+  `types.Content` con prefijo `"title: <sección> | text: …"` (un embedding por chunk en vez de uno
+  agregado), donde la sección es el `section_title` que el chunk heredó del outline del PDF;
+  `"none"` es solo el fallback cuando el PDF no trae outline. Para la query se prefija
+  `"task: search result | query: …"`.
+- La dimensión 3072 está centralizada en `rc7_shared_config` (`gemini_embed_dim`) y debe coincidir
+  con la columna `vector(N)` del modelo.
 
 **Consecuencias:** Al cambiar de modelo hay que invalidar (`embedding = NULL`) y re-embeber el
 corpus completo (`python -m scripts.reembed_chunks`). La migración de esquema en `init.py` hace
 DROP + ADD de la columna (idempotente) porque los datos se repueblan por re-embedding.
+
+> Ese comando **solo funciona en desarrollo**: `worker.Dockerfile` copia únicamente `pyproject.toml`
+> y `src`, y el packaging declara `include = ["src*"]`, así que `scripts/` no existe dentro de la
+> imagen. En dev funciona porque `docker-compose.yml` monta `./apps/worker:/app` encima. Para
+> poder ejecutarlo en producción habría que añadir `COPY apps/worker/scripts ./scripts` al
+> Dockerfile e incluir `scripts*` en el packaging.

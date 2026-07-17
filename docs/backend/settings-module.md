@@ -10,7 +10,7 @@ y se leen en cada request.
 
 | Método | Ruta | Descripción |
 |---|---|---|
-| `GET` | `/api/v1/admin/settings/` | Lista todos los parámetros con sus valores actuales |
+| `GET` | `/api/v1/admin/settings` | Lista todos los parámetros con sus valores actuales |
 | `GET` | `/api/v1/admin/settings/{key}` | Obtiene el valor de un parámetro específico |
 | `PUT` | `/api/v1/admin/settings/{key}` | Actualiza el valor de un parámetro |
 | `POST` | `/api/v1/admin/settings/reset` | Restaura todos los parámetros a sus valores por defecto |
@@ -25,7 +25,8 @@ Todos los endpoints requieren rol `admin`.
 
 | Clave | Tipo | Default | Descripción | Efecto en el pipeline |
 |---|---|---|---|---|
-| `gemini_temperature` | `float` | `0.7` | Temperatura de generación Gemini (0.0–1.0) | Controla la aleatoriedad de las respuestas: 0.0 = determinista, 1.0 = más creativo |
+| `gemini_temperature` | `float` | `0.7` | Temperatura de generación Gemini (0.0–1.0) | Controla la aleatoriedad de las respuestas: 0.0 = determinista, 1.0 = más creativo. **Solo afecta a la Fase 4** |
+| `hyde_temperature` | `float` | `0.0` | Temperatura de la Fase 1 (HyDE) | Tiene su propia clave porque su salida **no se muestra**: solo alimenta el embedding de búsqueda. Con la de generación (0.7) cada ejecución producía una hipótesis distinta y recuperaba fragmentos distintos para la misma pregunta |
 | `gemini_max_tokens` | `int` | `8192` | Límite de tokens de salida en Gemini (Phase 4 fuerza `response_mime_type=application/json` para emitir JSON puro) | Respuestas truncadas si el modelo alcanza el límite; con Gemini 3.5 Flash se recomienda ≥ 8192 para código PAC completo |
 | `gemini_timeout_seconds` | `int` | `300` | Timeout (segundos) de cada llamada a Gemini. **Ahora se lee** y se propaga al cliente en las 4 fases (fallback al env `GEMINI_TIMEOUT_SECONDS`). | Requests más largos fallan con timeout |
 | `rag_top_k_chunks` | `int` | `24` | Chunks finales (tras re-rank) enviados como contexto | Ver [la medición](#cuánto-aporta-subir-top-k) abajo. Con 24 el contexto ronda los 7k tokens — 0,7 % de la ventana de Gemini — y la latencia no cambia de forma medible |
@@ -35,9 +36,12 @@ Todos los endpoints requieren rol `admin`.
 | `history_max_entries` | `int` | `50` | Máximo de entradas de historial de chat por usuario | Al superarse, las entradas más antiguas se eliminan automáticamente |
 
 > **Nota de implementación:** Todos los valores se almacenan como `TEXT` en la base de datos.
-> El servicio `settings_service.py` se encarga de parsear a `int` o `float` según la clave
-> al leer el valor. Un valor inválido (ej. `"abc"` para `gemini_temperature`) hará que la
-> lectura falle; el endpoint `PUT` no valida el tipo, solo el formato de string no vacío.
+> [`services/settings/service.py`](../../apps/api/src/services/settings/service.py) los devuelve
+> siempre como **string** (`get_setting_value`); el parseo a `int`/`float` lo hace el consumidor,
+> `_load_chat_params` en [`services/chat/service.py`](../../apps/api/src/services/chat/service.py).
+> Un valor inválido (ej. `"abc"` para `gemini_temperature`) no falla al guardarse ni al leerse de
+> la BD, sino al convertirse en esa función: el endpoint `PUT` no valida el tipo, solo que el
+> string no esté vacío.
 
 > **Modelos Gemini y dimensión (no son settings de DB en caliente):** se centralizaron en
 > `config.py` de API y worker como `gemini_gen_model` (`gemini-3.5-flash`),

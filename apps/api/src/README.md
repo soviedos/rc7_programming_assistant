@@ -10,7 +10,9 @@ Endpoints HTTP versionados. Cada versión (`v1/`) contiene sus rutas (`routes/`)
 
 ## Directorio `core/`
 
-Configuración central del sistema: variables de entorno, seguridad, logging y dependencias base compartidas por todos los módulos.
+Configuración central del sistema: variables de entorno (`config.py`) y logging
+(`logging.py`). La seguridad vive en `services/auth/` y las dependencias inyectables en
+`api/v1/deps/`.
 
 ## Directorio `db/`
 
@@ -23,9 +25,12 @@ Lógica de negocio organizada por dominio:
 | Servicio | Responsabilidad |
 |---|---|
 | `auth/` | Autenticación, sesiones y gestión de contraseñas |
-| `chat/` | Orquestación de respuestas del asistente (placeholder) |
+| `chat/` | Pipeline RAG de 4 fases (HyDE → embedding → retrieval pgvector → generación Gemini), streaming SSE, linter PAC determinista, advisories y trazabilidad de fuentes |
 | `manuals/` | Gestión de la base documental y storage en MinIO |
+| `settings/` | Catálogo `DEFAULT_SETTINGS`, CRUD, seed y migraciones dirigidas de parámetros |
+| `audit_service.py` | Registro de eventos (`log_event`, `get_audit_logs`). Nunca lanza excepción |
 
-## Directorio `tests/`
+## Pruebas
 
-Pruebas unitarias y de integración del backend.
+`tests/` **no** está dentro de `src/`: es hermano suyo, en `apps/api/tests/`. Contiene las
+pruebas unitarias y de integración del backend.

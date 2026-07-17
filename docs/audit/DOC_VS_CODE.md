@@ -81,7 +81,7 @@
 | `_resolve_references` descarta IDs alucinados del array `references` del modelo | Recibe solo el `source_map` y **ignora a propósito** el array del modelo; emite una entrada por cada SID | [chat/service.py:100-114](../../apps/api/src/services/chat/service.py#L100) | Corregido |
 | El manual fallido guarda el detalle en `error_message` | La columna es `last_error` | [models/manual.py] | Corregido |
 | La mitigación del ADR cita una capa de "repositorios" | No existe: los servicios usan la sesión de SQLAlchemy directamente | [ADR-0001](../decisions/ADR-0001-monolithic-modular-architecture.md) | Corregido |
-| `packages/` contiene un solo paquete (`rc7_shared_db`) | Son dos: se añadió `rc7_shared_config` con `SharedSettings` y la validación de secretos | [packages/](../../packages/) | Corregido |
+| `packages/` contiene un solo paquete (`rc7_shared_db`) | Son **tres**: se añadieron `rc7_shared_config` (`SharedSettings` y validación de secretos) y `rc7_shared_storage` (`ManualStorageService`, el cliente MinIO) | [packages/](../../packages/) | Corregido |
 
 ## Chunking
 

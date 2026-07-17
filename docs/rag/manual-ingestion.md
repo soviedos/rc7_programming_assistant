@@ -95,9 +95,10 @@ desde la consola de administración (sin reiniciar el stack):
 
 | Parámetro (clave en settings) | Default | Efecto |
 |---|---|---|
-| `rag_top_k_chunks` | `6` | Número de chunks recuperados por consulta en la búsqueda coseno |
+| `rag_top_k_chunks` | `24` | Chunks finales (tras re-rank) enviados como contexto |
 | `hyde_temperature` | `0.0` | Temperatura de la fase 1 (HyDE). Su salida **solo** alimenta el embedding de búsqueda, no se muestra: subirla vuelve la recuperación inestable — con `0.7` la misma consulta traía documentación distinta en cada ejecución |
-| `rag_context_budget_chars` | `12000` | Presupuesto total de caracteres de contexto enviado a Gemini en Fase 4 |
+| `rag_context_budget_chars` | `32000` | Presupuesto total de caracteres de contexto enviado a Gemini en Fase 4. Debe dar cabida a `rag_top_k_chunks`: al agotarse, los fragmentos restantes se descartan en silencio |
+| `rag_candidate_pool` | `50` | Vecinos recuperados de pgvector antes del re-rank. También fija `hnsw.ef_search` |
 
 Ver [docs/backend/settings-module.md](../backend/settings-module.md) para la tabla completa.
 
@@ -211,7 +212,8 @@ Durante el chat, la búsqueda de chunks utiliza:
 2. **Búsqueda vectorial en pgvector** con el operador de distancia coseno `<=>` sobre
    `manual_chunks` (solo manuales con `status=indexed`). Acelerada por un índice **HNSW**
    construido sobre un cast a `halfvec(3072)` (pgvector limita los índices HNSW de `vector`
-   a 2000 dims). Se recupera un pool amplio de candidatos (top-50) ordenado por distancia.
+   a 2000 dims). Se recupera un pool de candidatos ordenado por distancia, configurable vía
+   `rag_candidate_pool` (default 50).
 3. **Re-ranking en Python** del pool con la fórmula de scoring:
 
    ```text

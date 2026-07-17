@@ -30,7 +30,8 @@ Backend principal del RC7 Programming Assistant, responsable de la autenticació
 - CRUD administrativo de usuarios y permisos por rol
 - Configuración administrativa persistente (`system_settings`, en caliente)
 - Auditoría de acciones operativas (`audit_log`)
-- Registro y carga de manuales PDF a MinIO + trigger de ingestión
+- Registro y carga de manuales PDF a MinIO, marcados como `pending` para que el worker los
+  recoja en su siguiente ciclo de polling (la API no notifica al worker)
 - Healthcheck para orquestación Docker
 
 ---

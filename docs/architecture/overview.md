@@ -54,6 +54,12 @@ validaciones de secretos en producción. Los `Settings` de api y worker heredan 
 y declaran solo sus campos propios, extendiendo `production_errors()` para sus
 propias validaciones.
 
+**`rc7_shared_storage/`** — `ManualStorageService` y `ManualStorageError`: el cliente
+MinIO (subir, descargar y borrar el PDF de un manual, más `ensure_bucket`) con una
+única definición. `apps/api/src/services/manuals/storage.py` y
+`apps/worker/src/services/storage.py` son solo re-exports que le inyectan el `settings`
+de su servicio.
+
 ### PostgreSQL 17 + pgvector
 
 Base de datos transaccional y vectorial única (imagen `pgvector/pgvector:pg17`).
@@ -106,9 +112,10 @@ En producción nginx aplica config especial para SSE (`proxy_buffering off`,
 10. Embedding de (consulta + respuesta hipotética) → búsqueda vectorial pgvector (`<=>`, HNSW)
 11. Fase 2 (Retrieval): pool top-50 por distancia coseno, re-rankeado por
     `similitud · compatibilidad de hardware · categoría` → top-k
-    (top-k configurable vía módulo settings, default: 6)
+    (top-k configurable vía módulo settings, default: 24)
 12. Fase 3 (Contexto): construcción del contexto con presupuesto de caracteres
-    (configurable vía módulo settings, default: 12 000 chars)
+    (configurable vía módulo settings, default: 32 000 chars).
+    Debe dar cabida al top-k: lo que no cabe se descarta en silencio
 13. Fase 4 (Respuesta final): Gemini con contexto RAG → JSON estructurado
     con `summary`, `pac_code` y `references` — transmitido vía SSE
 14. Frontend recibe chunks en tiempo real, reconstruye la respuesta

@@ -9,7 +9,7 @@ autenticación, administración, chat y configuración. Los registros son de sol
 
 | Método | Ruta | Auth | Descripción |
 |---|---|---|---|
-| `GET` | `/api/v1/admin/audit/` | `admin` | Lista eventos con filtros opcionales (paginado) |
+| `GET` | `/api/v1/admin/audit` | `admin` | Lista eventos con filtros opcionales (paginado) |
 | `GET` | `/api/v1/admin/audit/{log_id}` | `admin` | Detalle de un evento específico |
 
 ### Parámetros de filtrado (GET /)
@@ -19,10 +19,14 @@ autenticación, administración, chat y configuración. Los registros son de sol
 | `event_type` | `string` | Filtrar por tipo de evento (ej. `AUTH_LOGIN`) |
 | `actor_id` | `int` | Filtrar por ID del usuario que realizó la acción |
 | `resource_type` | `string` | Filtrar por tipo de recurso afectado (ej. `manual`, `user`) |
-| `date_from` | `datetime` | Eventos desde esta fecha (ISO 8601) |
-| `date_to` | `datetime` | Eventos hasta esta fecha (ISO 8601) |
+| `date_from` | `string` | Eventos desde esta fecha (se espera ISO 8601) |
+| `date_to` | `string` | Eventos hasta esta fecha (se espera ISO 8601) |
 | `page` | `int` | Número de página (default: 1) |
 | `page_size` | `int` | Resultados por página (default: 50, máx: 200) |
+
+> `date_from` / `date_to` se declaran como `str` y se pasan tal cual al `WHERE`: **no hay
+> validación de formato**. Un valor inválido no lo rechaza Pydantic con un 422, sino que falla
+> en la base de datos.
 
 ---
 
@@ -30,7 +34,7 @@ autenticación, administración, chat y configuración. Los registros son de sol
 
 | Campo | Tipo | Descripción |
 |---|---|---|
-| `id` | UUID | Identificador único del evento |
+| `id` | string | Identificador único del evento (UUID v4 en `VARCHAR(36)`) |
 | `event_type` | string | Tipo de evento (ver tabla a continuación) |
 | `actor_id` | int | ID del usuario que realizó la acción (nullable) |
 | `actor_email` | string | Email del actor en el momento del evento |

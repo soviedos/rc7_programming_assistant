@@ -1,10 +1,13 @@
 # MinIO
 
-Configuración del object storage local compatible con S3, utilizado para almacenar manuales PDF y derivados del pipeline de ingestión.
+Documentación del object storage local compatible con S3, utilizado para almacenar los
+manuales PDF originales.
 
 ---
 
 ## Acceso local
+
+Solo en desarrollo: en `docker-compose.prod.yml` estos puertos son `expose`, no se publican.
 
 | Interfaz | URL |
 |---|---|
@@ -13,4 +16,8 @@ Configuración del object storage local compatible con S3, utilizado para almace
 
 ## Bucket principal
 
-- `rc7-manuals`: almacenamiento de PDFs originales y archivos procesados
+- `rc7-manuals`: los PDFs originales, y solo eso. `ManualStorageService` únicamente sube,
+  descarga y borra el PDF de un manual: los derivados del pipeline (chunks, embeddings,
+  revisiones) viven en PostgreSQL, no aquí.
+
+El bucket lo crea `ensure_bucket()` en `rc7_shared_storage`; no hay que provisionarlo a mano.
