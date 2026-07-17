@@ -679,13 +679,27 @@ def _parse_gemini_json(raw: str) -> dict:
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError:
-        # Best-effort: extract first {...} block
-        match = re.search(r"\{.*\}", cleaned, re.DOTALL)
-        if match:
+        # Gemini a veces cierra bien el objeto y escribe basura DETRÁS — medido:
+        # un "}" de sobra en 6 de 48 respuestas reales. json.loads rechaza el
+        # texto entero por eso ("Extra data") y la respuesta buena, ya completa,
+        # se perdía: el usuario veía el JSON crudo en el historial y el canvas
+        # vacío. raw_decode parsea el primer valor completo y se desentiende de
+        # lo que sobre. Sustituye a un re.search(r"\{.*\}") que era greedy y se
+        # tragaba justo la llave de más que sobraba.
+        start = cleaned.find("{")
+        if start != -1:
             try:
-                data = json.loads(match.group(0))
+                data, end = json.JSONDecoder().raw_decode(cleaned[start:])
             except json.JSONDecodeError:
                 data = None
+            else:
+                trailing = cleaned[start + end :].strip()
+                if trailing:
+                    _logger.info(
+                        "Gemini escribió %d chars tras el JSON; descartados: %r",
+                        len(trailing),
+                        trailing[:40],
+                    )
 
         if data is None:
             # Truncado: el stream de Gemini se cortó sin cerrar el JSON. Sin esto
